@@ -8,9 +8,10 @@ import {
 } from './utils';
 import { exportDocx, isImportable, readImport } from './docx-flow';
 import { snapshot, moveHistory, removeHistory } from './history';
+import type { SearchResponse, FileHit } from './search/types';
 
 // 새 문서를 만들 폴더(사이드바에서 선택한 폴더, 열린 문서의 폴더). 빈 문자열이면 루트.
-export const nav = $state({ dir: '' });
+export const nav = $state({ dir: '', filter: '' }); // filter: 사이드바 파일명 검색어
 
 // docx 내보내기 템플릿 폴더의 .docx 목록
 export const templates = $state<{ dir: string; files: string[] }>({ dir: '', files: [] });
@@ -138,6 +139,24 @@ export async function restoreVersion(content: string) {
   doc.dirty = true;
   doc.key++;
   if (!(await save())) throw new Error('저장에 실패했습니다');
+}
+
+// ---- 본문 검색 ----
+export async function searchFiles(
+  query: string,
+  opts: { caseSensitive: boolean; regex: boolean },
+  signal: AbortSignal,
+): Promise<SearchResponse> {
+  const params = new URLSearchParams({ q: query, cs: opts.caseSensitive ? '1' : '0', re: opts.regex ? '1' : '0' });
+  const r = await call<{ results: { path: string; matches: FileHit['matches']; more: boolean }[]; count: number; truncated: boolean }>(
+    `/api/search?${params}`,
+    { signal },
+  );
+  return {
+    results: r.results.map((f) => ({ id: f.path, label: stripExt(f.path), matches: f.matches, more: f.more })),
+    count: r.count,
+    truncated: r.truncated,
+  };
 }
 
 // ---- 파일 트리 조작 ----

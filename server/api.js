@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createReadStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { Worker } from 'node:worker_threads';
+import { buildMatcher } from './searchCore.js';
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.avif', '.bmp']);
 const MIME = {
@@ -12,6 +14,8 @@ const MIME = {
 const MAX_JSON = 20 * 1024 * 1024;
 const MAX_UPLOAD = 50 * 1024 * 1024;
 const SKIP_DIRS = new Set(['node_modules', 'assets']);
+const SEARCH = { perFile: 50, total: 500, maxBytes: 2 * 1024 * 1024, timeoutMs: 8000 };
+const SEARCH_WORKER = fileURLToPath(new URL('./searchWorker.js', import.meta.url));
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -91,6 +95,35 @@ export function createApi(rootInput, opts = {}) {
     return out;
   }
 
+  // 검색 대상 .md 파일 목록 (트리와 같은 제외 규칙, 심볼릭 링크는 따라가지 않는다)
+  async function listMd(dirAbs, out = []) {
+    const entries = await fs.readdir(dirAbs, { withFileTypes: true });
+    for (const e of entries) {
+      if (e.name.startsWith('.') || SKIP_DIRS.has(e.name)) continue;
+      const abs = path.join(dirAbs, e.name);
+      if (e.isDirectory()) await listMd(abs, out);
+      else if (e.isFile() && isMd(e.name)) out.push({ path: rel(abs), abs });
+    }
+    return out;
+  }
+
+  // 정규식이 오래 걸리면 워커를 끊는다
+  function runSearch(req, files, query, opts) {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(SEARCH_WORKER, {
+        workerData: { files, query, opts, perFile: SEARCH.perFile, total: SEARCH.total, maxBytes: SEARCH.maxBytes },
+      });
+      const timer = setTimeout(() => {
+        void worker.terminate();
+        reject(new HttpError(422, '검색 시간이 초과되었습니다. 검색어(정규식)를 단순하게 바꿔 보세요'));
+      }, SEARCH.timeoutMs);
+      // 클라이언트가 요청을 취소하면(검색어를 계속 고치는 중) 워커도 바로 끊는다
+      req.once('client-abort', () => { clearTimeout(timer); void worker.terminate(); reject(new HttpError(499, '검색이 취소되었습니다')); });
+      worker.once('message', (m) => { clearTimeout(timer); resolve(m); });
+      worker.once('error', (e) => { clearTimeout(timer); reject(e); });
+    });
+  }
+
   const routes = {
     'GET /api/info': async () => ({ root: path.basename(root) || root }),
 
@@ -108,6 +141,16 @@ export function createApi(rootInput, opts = {}) {
     },
 
     'GET /api/tree': async () => ({ children: await buildTree(root) }),
+
+    // 본문 검색: q=검색어, cs=1 대소문자 구분, re=1 정규식
+    'GET /api/search': async (req, q) => {
+      const query = q.get('q') ?? '';
+      const opts = { caseSensitive: q.get('cs') === '1', regex: q.get('re') === '1' };
+      const { error } = buildMatcher(query, opts);
+      if (error) throw new HttpError(400, error);
+      const files = (await listMd(root)).sort((a, b) => a.path.localeCompare(b.path, 'ko'));
+      return runSearch(req, files, query, opts);
+    },
 
     'GET /api/file': async (_req, q) => {
       const abs = await safe(q.get('path'));
@@ -251,6 +294,7 @@ export function createApi(rootInput, opts = {}) {
       if (req.method === 'GET' && url.pathname === '/api/raw') { await raw(res, url.searchParams); return true; }
       if (req.method === 'GET' && url.pathname === '/api/template') { await template(res, url.searchParams); return true; }
       if (req.method === 'GET' && url.pathname === '/api/pandoc.wasm') { await wasm(res); return true; }
+      res.once('close', () => { if (!res.writableEnded) req.emit('client-abort'); });
       const fn = routes[`${req.method} ${url.pathname}`];
       if (!fn) throw new HttpError(404, '없는 API');
       const data = await fn(req, url.searchParams);

@@ -431,3 +431,63 @@ button svg { flex: none; }
 .history-preview { flex: 1; min-width: 0; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
 :root .history-preview .milkdown .ProseMirror { padding: 16px 24px 32px; }
 @media (max-width: 720px) { .history-body { flex-direction: column; height: auto; } .history-list { width: auto; max-height: 160px; } .history-preview { max-height: 50vh; } }
+
+/* ---- 검색: 사이드바 탭, 파일명 필터, 전체 검색 패널, 문서 내 검색 바, 하이라이트 ---- */
+.sidetabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); }
+.sidetabs button {
+  border: 0; background: transparent; border-radius: 6px 6px 0 0; padding: 5px 12px;
+  color: var(--muted); font-size: 13px; border-bottom: 2px solid transparent;
+}
+.sidetabs button.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.tabpane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tabpane[hidden] { display: none !important; }
+
+.filterbox, .searchbox {
+  display: flex; align-items: center; gap: 4px; margin: 8px 8px 0; padding: 2px 6px;
+  border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--muted);
+}
+.filterbox:focus-within, .searchbox:focus-within { border-color: var(--accent); }
+.filterbox input, .searchbox input, .findbar input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text);
+  font: inherit; font-size: 13px; padding: 4px 2px;
+}
+.filterbox .icon-btn, .findbar .icon-btn { padding: 2px; }
+input.invalid { color: #c0392b; }
+.toggle {
+  flex: none; border: 1px solid transparent; background: transparent; border-radius: 4px;
+  padding: 1px 5px; font-size: 12px; font-family: var(--font-code); color: var(--muted);
+}
+.toggle:hover { background: var(--hover); }
+.toggle.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+
+.searchpanel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.searchpanel .results { flex: 1; overflow: auto; padding: 6px 4px 16px; }
+.searchpanel .empty, .searchpanel .summary { color: var(--muted); padding: 8px 12px; font-size: 13px; margin: 0; }
+.searchpanel .empty.err { color: #c0392b; }
+.searchpanel ul { list-style: none; margin: 0; padding: 0; }
+.searchpanel .file { display: flex; align-items: center; gap: 4px; padding: 6px 8px 2px; font-size: 13px; font-weight: 600; }
+.searchpanel .file.active { color: var(--accent); }
+.searchpanel .file .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.searchpanel .file .n { color: var(--muted); font-weight: 400; font-size: 12px; }
+.searchpanel .hits button {
+  display: flex; gap: 8px; width: 100%; text-align: left; border: 0; background: transparent;
+  border-radius: 4px; padding: 2px 8px 2px 22px; font-size: 12.5px; line-height: 1.45; align-items: baseline;
+}
+.searchpanel .hits button:hover { background: var(--hover); }
+.searchpanel .hits .ln { flex: none; min-width: 2.2em; color: var(--muted); text-align: right; font-size: 11px; }
+.searchpanel .hits .snip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.searchpanel mark, :root .history-preview mark { background: rgba(255, 200, 0, 0.45); color: inherit; border-radius: 2px; }
+
+.findbar-anchor { position: sticky; top: 8px; height: 0; z-index: 6; display: flex; justify-content: flex-end; padding-right: 20px; pointer-events: none; }
+.findbar {
+  pointer-events: auto; align-self: flex-start; display: flex; align-items: center; gap: 4px;
+  width: min(440px, calc(100vw - 40px)); padding: 4px 6px; background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow);
+}
+.findbar .count { flex: none; color: var(--muted); font-size: 12px; min-width: 3.5em; text-align: right; white-space: nowrap; max-width: 12em; overflow: hidden; text-overflow: ellipsis; }
+.findbar .count.err { color: #c0392b; }
+
+:root .milkdown .ProseMirror .search-hit { background: rgba(255, 200, 0, 0.4); border-radius: 2px; }
+:root .milkdown .ProseMirror .search-hit.search-current { background: rgba(255, 140, 0, 0.75); outline: 1px solid rgb(230, 120, 0); }
+:root .milkdown .ProseMirror .search-code-hit { outline: 2px dashed rgba(255, 200, 0, 0.8); outline-offset: -2px; }
+:root .milkdown .ProseMirror .search-code-current { outline: 2px solid rgb(230, 120, 0); }

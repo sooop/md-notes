@@ -7,6 +7,10 @@
   import PasteModal from './PasteModal.svelte';
   import ExportMenu from './ExportMenu.svelte';
   import HistoryPanel from './HistoryPanel.svelte';
+  import FindBar from './FindBar.svelte';
+  import SearchPanel from './SearchPanel.svelte';
+  import Search from '@lucide/svelte/icons/search';
+  import X from '@lucide/svelte/icons/x';
   import FilePlus from '@lucide/svelte/icons/file-plus';
   import FolderPlus from '@lucide/svelte/icons/folder-plus';
   import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
@@ -16,11 +20,13 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import { doc, settings } from '../store.svelte';
   import {
-    tree, nav, templates, init, save, onEditorChange, upload, resolveUrl, createDoc, createFolder,
+    tree, nav, templates, init, openDoc, save, onEditorChange, upload, resolveUrl, createDoc, createFolder,
     convertImages, createFromText, handleDrop, exportDocxCurrent, exportMdCurrent, refreshTemplates, selectTemplate,
-    restoreVersion,
+    restoreVersion, searchFiles,
   } from '../server-mode.svelte';
   import { stripExt } from '../utils';
+  import { ui, searchShortcut } from '../search/state.svelte';
+  import { filterTree } from '../search/nameMatch';
 
   let sidebarOpen = $state(true);
   let convertOpen = $state(false);
@@ -36,9 +42,12 @@
       : '',
   );
 
+  const visibleNodes = $derived(nav.filter.trim() ? filterTree(tree.nodes, nav.filter) : tree.nodes);
+
   onMount(() => { void init(); });
 
   function onKey(e: KeyboardEvent) {
+    if (searchShortcut(e, !!doc.path) === 'global') sidebarOpen = true;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
       void save();
@@ -74,17 +83,33 @@
           <button class="icon-btn" title="붙여넣어 새 문서 만들기" aria-label="붙여넣어 새 문서 만들기" onclick={() => (pasteOpen = true)}><ClipboardPaste size={17} /></button>
         </span>
       </header>
-      <nav class="tree">
-        {#if tree.nodes.length}
-          <ul>
-            {#each tree.nodes as node (node.path)}
-              <TreeNode {node} />
-            {/each}
-          </ul>
-        {:else}
-          <p class="empty">문서가 없습니다. 위의 새 문서 버튼으로 만들거나 .md · .txt · .docx 파일을 끌어다 놓으세요.</p>
-        {/if}
-      </nav>
+      <div class="sidetabs" role="tablist">
+        <button role="tab" class:on={ui.tab === 'files'} aria-selected={ui.tab === 'files'} onclick={() => (ui.tab = 'files')}>파일</button>
+        <button role="tab" class:on={ui.tab === 'search'} aria-selected={ui.tab === 'search'} onclick={() => { ui.tab = 'search'; ui.globalFocus++; }} title="모든 문서에서 검색 (Ctrl+Shift+F)">검색</button>
+      </div>
+      <div class="tabpane" hidden={ui.tab !== 'files'}>
+        <div class="filterbox">
+          <Search size={14} />
+          <input bind:value={nav.filter} placeholder="파일 이름 검색 (초성 가능)" aria-label="파일 이름 검색" spellcheck="false" />
+          {#if nav.filter}<button class="icon-btn" title="지우기" aria-label="검색어 지우기" onclick={() => (nav.filter = '')}><X size={14} /></button>{/if}
+        </div>
+        <nav class="tree">
+          {#if visibleNodes.length}
+            <ul>
+              {#each visibleNodes as node (node.path)}
+                <TreeNode {node} />
+              {/each}
+            </ul>
+          {:else if nav.filter.trim()}
+            <p class="empty">'{nav.filter}' 와 일치하는 파일이 없습니다.</p>
+          {:else}
+            <p class="empty">문서가 없습니다. 위의 새 문서 버튼으로 만들거나 .md · .txt · .docx 파일을 끌어다 놓으세요.</p>
+          {/if}
+        </nav>
+      </div>
+      <div class="tabpane" hidden={ui.tab !== 'search'}>
+        <SearchPanel run={searchFiles} onOpen={openDoc} activeId={doc.path} />
+      </div>
     </aside>
   {/if}
 
@@ -126,6 +151,7 @@
     </header>
 
     <section class="editor-wrap">
+      <FindBar />
       {#if doc.path}
         {#key doc.key}
           <Editor initial={doc.content} onChange={onEditorChange} {upload} {resolveUrl} />

@@ -3,6 +3,8 @@
 import { doc, toast, askPrompt, askConfirm, errMsg } from './store.svelte';
 import { downloadText, fileToDataUrl, replaceImages, sanitizeName, stripExt } from './utils';
 import { exportDocx, isImportable, readImport } from './docx-flow';
+import { buildMatcher, searchText } from '../../server/searchCore.js';
+import type { SearchResponse } from './search/types';
 import { snapshot, removeHistory, allContents } from './history';
 
 // ---- IndexedDB ----
@@ -41,7 +43,7 @@ export interface DocMeta { id: string; name: string }
 
 const LAST_KEY = 'notes.lastDoc';
 const all = new Map<string, Rec>(); // 모든 문서(메모리 사본)
-export const lib = $state<{ docs: DocMeta[] }>({ docs: [] });
+export const lib = $state<{ docs: DocMeta[]; filter: string }>({ docs: [], filter: '' }); // filter: 사이드바 파일명 검색어
 
 function refreshList() {
   lib.docs = [...all.values()]
@@ -196,6 +198,28 @@ export async function restoreVersion(content: string) {
   doc.key++;
   await flush();
   if (failed) throw new Error('저장에 실패했습니다');
+}
+
+// ---- 본문 검색 (메모리에 올려 둔 문서 본문을 직접 검색) ----
+const SEARCH_PER_FILE = 50;
+const SEARCH_TOTAL = 500;
+
+export async function searchLibrary(query: string, opts: { caseSensitive: boolean; regex: boolean }): Promise<SearchResponse> {
+  const m = buildMatcher(query, opts);
+  if (m.error !== undefined) throw new Error(m.error);
+  const results: SearchResponse['results'] = [];
+  let count = 0;
+  let truncated = false;
+  const recs = [...all.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  for (const r of recs) {
+    if (count >= SEARCH_TOTAL) { truncated = true; break; }
+    const hit = searchText(r.content, m.re, { maxMatches: Math.min(SEARCH_PER_FILE, SEARCH_TOTAL - count) });
+    if (!hit.matches.length) continue;
+    count += hit.matches.length;
+    if (hit.truncated) truncated = true;
+    results.push({ id: r.id, label: stripExt(r.name), matches: hit.matches, more: hit.truncated });
+  }
+  return { results, count, truncated };
 }
 
 // ---- 이미지 ----

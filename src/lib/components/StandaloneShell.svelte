@@ -6,6 +6,10 @@
   import PasteModal from './PasteModal.svelte';
   import ExportMenu from './ExportMenu.svelte';
   import HistoryPanel from './HistoryPanel.svelte';
+  import FindBar from './FindBar.svelte';
+  import SearchPanel from './SearchPanel.svelte';
+  import Search from '@lucide/svelte/icons/search';
+  import X from '@lucide/svelte/icons/x';
   import FilePlus from '@lucide/svelte/icons/file-plus';
   import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
   import FolderOpen from '@lucide/svelte/icons/folder-open';
@@ -16,9 +20,11 @@
   import { doc } from '../store.svelte';
   import {
     lib, init, save, flush, exportMd, openPicker, openDoc, createDoc, renameDoc, removeDoc, onEditorChange,
-    upload, resolveUrl, importFiles, createFromText, exportDocxCurrent, tpl, pickTemplate, clearTemplate, restoreVersion,
+    upload, resolveUrl, importFiles, createFromText, exportDocxCurrent, tpl, pickTemplate, clearTemplate, restoreVersion, searchLibrary,
   } from '../standalone-mode.svelte';
   import { stripExt } from '../utils';
+  import { ui, searchShortcut } from '../search/state.svelte';
+  import { matchName } from '../search/nameMatch';
 
   let pasteOpen = $state(false);
   let sidebarOpen = $state(true);
@@ -28,9 +34,12 @@
     ...(tpl.name ? [{ id: 'custom', label: tpl.name }] : []),
   ]);
 
+  const visibleDocs = $derived(lib.filter.trim() ? lib.docs.filter((d) => matchName(stripExt(d.name), lib.filter)) : lib.docs);
+
   onMount(() => { void init(); });
 
   function onKey(e: KeyboardEvent) {
+    if (searchShortcut(e, !!doc.path) === 'global') sidebarOpen = true;
     if (!(e.ctrlKey || e.metaKey)) return;
     const k = e.key.toLowerCase();
     if (k === 's') { e.preventDefault(); void save(); }
@@ -57,29 +66,45 @@
           <button class="icon-btn" title="파일 가져오기 (Ctrl+O)" aria-label="파일 가져오기" onclick={openPicker}><FolderOpen size={17} /></button>
         </span>
       </header>
-      <nav class="tree">
-        {#if lib.docs.length}
-          <ul>
-            {#each lib.docs as d (d.id)}
-              <li>
-                <div class="row" class:active={doc.path === d.id} style:padding-left="8px">
-                  <button class="name" onclick={() => openDoc(d.id)}>
-                    <span class="twisty"></span>
-                    <FileText size={15} class="ico" />
-                    <span class="label">{stripExt(d.name)}</span>
-                  </button>
-                  <span class="ops">
-                    <button title="이름 변경" aria-label="이름 변경" onclick={() => renameDoc(d)}><Pencil size={14} /></button>
-                    <button title="삭제" aria-label="삭제" onclick={() => removeDoc(d)}><Trash2 size={14} /></button>
-                  </span>
-                </div>
-              </li>
-            {/each}
-          </ul>
-        {:else}
-          <p class="empty">문서가 없습니다. 위의 새 문서 버튼으로 만들거나 .md · .txt · .docx 파일을 끌어다 놓으세요. 문서는 이 브라우저에 보관됩니다.</p>
-        {/if}
-      </nav>
+      <div class="sidetabs" role="tablist">
+        <button role="tab" class:on={ui.tab === 'files'} aria-selected={ui.tab === 'files'} onclick={() => (ui.tab = 'files')}>파일</button>
+        <button role="tab" class:on={ui.tab === 'search'} aria-selected={ui.tab === 'search'} onclick={() => { ui.tab = 'search'; ui.globalFocus++; }} title="모든 문서에서 검색 (Ctrl+Shift+F)">검색</button>
+      </div>
+      <div class="tabpane" hidden={ui.tab !== 'files'}>
+        <div class="filterbox">
+          <Search size={14} />
+          <input bind:value={lib.filter} placeholder="파일 이름 검색 (초성 가능)" aria-label="파일 이름 검색" spellcheck="false" />
+          {#if lib.filter}<button class="icon-btn" title="지우기" aria-label="검색어 지우기" onclick={() => (lib.filter = '')}><X size={14} /></button>{/if}
+        </div>
+        <nav class="tree">
+          {#if visibleDocs.length}
+            <ul>
+              {#each visibleDocs as d (d.id)}
+                <li>
+                  <div class="row" class:active={doc.path === d.id} style:padding-left="8px">
+                    <button class="name" onclick={() => openDoc(d.id)}>
+                      <span class="twisty"></span>
+                      <FileText size={15} class="ico" />
+                      <span class="label">{stripExt(d.name)}</span>
+                    </button>
+                    <span class="ops">
+                      <button title="이름 변경" aria-label="이름 변경" onclick={() => renameDoc(d)}><Pencil size={14} /></button>
+                      <button title="삭제" aria-label="삭제" onclick={() => removeDoc(d)}><Trash2 size={14} /></button>
+                    </span>
+                  </div>
+                </li>
+              {/each}
+            </ul>
+          {:else if lib.filter.trim()}
+            <p class="empty">'{lib.filter}' 와 일치하는 문서가 없습니다.</p>
+          {:else}
+            <p class="empty">문서가 없습니다. 위의 새 문서 버튼으로 만들거나 .md · .txt · .docx 파일을 끌어다 놓으세요. 문서는 이 브라우저에 보관됩니다.</p>
+          {/if}
+        </nav>
+      </div>
+      <div class="tabpane" hidden={ui.tab !== 'search'}>
+        <SearchPanel run={searchLibrary} onOpen={openDoc} activeId={doc.path} />
+      </div>
     </aside>
   {/if}
 
@@ -104,6 +129,7 @@
     </header>
 
     <section class="editor-wrap">
+      <FindBar />
       {#if doc.path}
         {#key doc.key}
           <Editor initial={doc.content} onChange={onEditorChange} {upload} {resolveUrl} />

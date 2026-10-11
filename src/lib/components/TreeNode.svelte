@@ -16,6 +16,7 @@
 
   let { node, depth = 0 }: { node: Node; depth?: number } = $props();
   let expanded = $state(true);
+  const open = $derived(!!nav.filter.trim() || expanded); // 파일명 검색 중에는 일치 항목이 보이도록 모두 펼친다
 </script>
 
 <li>
@@ -26,8 +27,8 @@
     style:padding-left="{8 + depth * 14}px"
   >
     {#if node.type === 'dir'}
-      <button class="name" onclick={() => { nav.dir = node.path; expanded = !expanded; }} aria-expanded={expanded} title="선택한 폴더에 새 문서가 만들어집니다">
-        <span class="twisty">{#if expanded}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}</span>
+      <button class="name" onclick={() => { nav.dir = node.path; expanded = !expanded; }} aria-expanded={open} title="선택한 폴더에 새 문서가 만들어집니다">
+        <span class="twisty">{#if open}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}</span>
         <Folder size={15} class="ico" />
         <span class="label">{node.name}</span>
       </button>
@@ -48,7 +49,7 @@
       <button title="삭제" aria-label="삭제" onclick={() => removeNode(node)}><Trash2 size={14} /></button>
     </span>
   </div>
-  {#if node.type === 'dir' && expanded && node.children?.length}
+  {#if node.type === 'dir' && open && node.children?.length}
     <ul>
       {#each node.children as child (child.path)}
         <TreeNode node={child} depth={depth + 1} />

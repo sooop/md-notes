@@ -10,7 +10,10 @@
   import { placeholder } from '@milkdown/crepe/feature/placeholder';
   import { table } from '@milkdown/crepe/feature/table';
   import { toolbar } from '@milkdown/crepe/feature/toolbar';
-  import { editorBridge } from '../store.svelte';
+  import { editorViewCtx } from '@milkdown/kit/core';
+  import { editorBridge, doc } from '../store.svelte';
+  import { attachFinder } from '../search/pmSearch';
+  import { finder } from '../search/state.svelte';
   import { codeLanguages, codeHighlight } from '../codeLanguages';
 
   interface Props {
@@ -27,6 +30,7 @@
   // 문서가 바뀌면 부모가 {#key} 로 이 컴포넌트를 새로 만든다. 여기서는 한 번만 생성한다.
   $effect(() => {
     let crepe: CrepeBuilder | undefined;
+    let ctl: ReturnType<typeof attachFinder> | undefined;
     let disposed = false;
     untrack(() => {
       const c = new CrepeBuilder({ root: host, defaultValue: initial })
@@ -50,12 +54,23 @@
         if (disposed) void c.destroy();
         else {
           crepe = c;
-          if (!readonly) editorBridge.getMarkdown = () => c.getMarkdown();
+          if (!readonly) {
+            editorBridge.getMarkdown = () => c.getMarkdown();
+            // 문서 내 검색: 열린 문서의 에디터만 검색 바에 연결한다
+            const view = c.editor.action((ctx) => ctx.get(editorViewCtx));
+            ctl = attachFinder(view, (st) => Object.assign(finder, st));
+            finder.ctlPath = doc.path;
+            finder.ctl = ctl;
+          }
         }
       });
     });
     return () => {
       disposed = true;
+      if (ctl) {
+        ctl.destroy();
+        if (finder.ctl === ctl) { finder.ctl = null; finder.total = 0; finder.current = -1; finder.error = ''; }
+      }
       void crepe?.destroy();
     };
   });

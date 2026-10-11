@@ -95,7 +95,7 @@
         </div>
         <label class="check">
           <input type="checkbox" checked={settings.autosave} onchange={toggleAutosave} />
-          <span>자동 저장 (입력 후 1.5초)</span>
+          <span>자동 저장 (입력 후 0.7초, 최대 10초)</span>
         </label>
       {/if}
     </div>

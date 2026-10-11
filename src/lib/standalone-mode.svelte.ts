@@ -1,196 +1,333 @@
-// 스탠드얼론 HTML 버전: 열기/드롭, 내보내기, File System Access 덮어쓰기, IndexedDB 임시 보관
-import { doc, toast, askChoose, errMsg } from './store.svelte';
-import { downloadText, fileToDataUrl } from './utils';
-import { exportDocx, isDocxFile, isImportable, isTextDocFile, readImport } from './docx-flow';
+// 스탠드얼론 HTML 버전: IndexedDB 에 문서 여러 개와 이미지 Blob, docx 템플릿을 보관하는 라이브러리.
+// 디스크 파일과는 연동하지 않는다(열기/드롭/붙여넣기는 가져오기, .md/.docx 는 내보내기).
+import { doc, toast, askPrompt, askConfirm, errMsg } from './store.svelte';
+import { downloadText, fileToDataUrl, replaceImages, sanitizeName, stripExt } from './utils';
+import { exportDocx, isImportable, readImport } from './docx-flow';
+import { snapshot, removeHistory, allContents } from './history';
 
-// File System Access API 타입 (lib.dom 에 없는 부분)
-interface FsHandle {
-  name: string;
-  getFile(): Promise<File>;
-  createWritable(): Promise<{ write(d: string): Promise<void>; close(): Promise<void> }>;
-}
-type PickerWindow = Window & {
-  showOpenFilePicker?: (o?: unknown) => Promise<FsHandle[]>;
-  showSaveFilePicker?: (o?: unknown) => Promise<FsHandle>;
-};
-const w = window as PickerWindow;
-
-export const fsaSupported = typeof w.showOpenFilePicker === 'function';
-
-const MD_TYPES = [{ description: 'Markdown', accept: { 'text/markdown': ['.md', '.markdown'], 'text/plain': ['.txt'] } }];
-const OPEN_TYPES = [
-  ...MD_TYPES,
-  { description: 'Word', accept: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] } },
-];
-let handle: FsHandle | null = null;
-
-// ---- IndexedDB 임시 보관 (문서 1개) ----
+// ---- IndexedDB ----
+// kv: docx 템플릿 / docs: 문서 / images: 문서에서 `idb:<id>` 로 참조하는 이미지 Blob
 const DB = 'notes-standalone';
+type Store = 'kv' | 'docs' | 'images';
+
+let dbPromise: Promise<IDBDatabase> | undefined;
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+  dbPromise ??= new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB, 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      if (!db.objectStoreNames.contains('docs')) db.createObjectStore('docs', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('images')) db.createObjectStore('images', { keyPath: 'id' });
+      req.transaction!.objectStore('kv').delete('draft'); // v1 의 임시 보관 문서는 이관하지 않고 버린다
+    };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => { dbPromise = undefined; reject(req.error); };
   });
+  return dbPromise;
 }
-async function idb<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+async function idb<T>(store: Store, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
-    const req = fn(db.transaction('kv', mode).objectStore('kv'));
+    const req = fn(db.transaction(store, mode).objectStore(store));
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
-interface Draft { name: string; content: string; dirty: boolean }
 
-let draftTimer: ReturnType<typeof setTimeout> | undefined;
-function saveDraft() {
-  clearTimeout(draftTimer);
-  draftTimer = setTimeout(() => {
-    const d: Draft = { name: doc.name, content: doc.content, dirty: doc.dirty };
-    idb('readwrite', (s) => s.put(d, 'draft')).catch(() => { /* 저장소를 못 쓰는 환경 */ });
-  }, 400);
+interface Rec { id: string; name: string; content: string; updated: number }
+interface Img { id: string; blob: Blob; created: number }
+export interface DocMeta { id: string; name: string }
+
+const LAST_KEY = 'notes.lastDoc';
+const all = new Map<string, Rec>(); // 모든 문서(메모리 사본)
+export const lib = $state<{ docs: DocMeta[] }>({ docs: [] });
+
+function refreshList() {
+  lib.docs = [...all.values()]
+    .map(({ id, name }) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
+
+let failed = false;
+async function putDoc(rec: Rec) {
+  try {
+    await idb('docs', 'readwrite', (s) => s.put(rec));
+    failed = false;
+  } catch (e) {
+    if (!failed) toast(`저장하지 못했습니다: ${errMsg(e)}`, 'error');
+    failed = true;
+    throw e;
+  }
 }
 
 export async function init() {
   void loadTemplateInfo();
   try {
-    const d = await idb<Draft | undefined>('readonly', (s) => s.get('draft'));
-    if (d && (d.content || d.dirty)) {
-      Object.assign(doc, { name: d.name, content: d.content, dirty: d.dirty });
-      doc.key++;
-      toast('이전 작업을 복구했습니다');
-    }
-  } catch { /* 임시 보관 없이 시작 */ }
+    await navigator.storage?.persist?.(); // 브라우저가 임의로 비우지 않도록 요청(거절돼도 무시)
+    const recs = await idb<Rec[]>('docs', 'readonly', (s) => s.getAll());
+    for (const r of recs) all.set(r.id, r);
+    refreshList();
+    const last = localStorage.getItem(LAST_KEY);
+    if (last && all.has(last)) await openDoc(last);
+  } catch (e) {
+    toast(`보관소를 열지 못했습니다: ${errMsg(e)}`, 'error');
+  }
 }
+
+// ---- 현재 문서 저장 (항상 자동 저장) ----
+let timer: ReturnType<typeof setTimeout> | undefined;
 
 export function onEditorChange(md: string) {
   doc.content = md;
-  doc.dirty = true;
-  saveDraft();
+  const rec = all.get(doc.path);
+  if (!rec) return;
+  rec.content = md; // 이미지 정리가 최신 참조를 보도록 즉시 반영
+  clearTimeout(timer);
+  timer = setTimeout(() => void flush(), 400);
 }
 
-function setDoc(name: string, content: string, h: FsHandle | null) {
-  handle = h;
-  Object.assign(doc, { name, content, dirty: false });
-  doc.key++;
-  saveDraft();
-}
-
-// 변경이 있으면 저장/버리기/취소를 묻는다. true 면 진행해도 된다.
-async function guardDirty(): Promise<boolean> {
-  if (!doc.dirty) return true;
-  const pick = await askChoose(`'${doc.name}' 에 저장하지 않은 변경이 있습니다.`, ['저장', '버리기', '취소']);
-  if (pick === 0) return save();
-  return pick === 1;
-}
-
-export async function newDoc() {
-  if (await guardDirty()) setDoc('제목 없음.md', '', null);
-}
-
-export async function openFile(file: File, h: FsHandle | null = null) {
+// 대기 중인 변경을 즉시 기록한다
+export async function flush() {
+  clearTimeout(timer);
+  const rec = all.get(doc.path);
+  if (!rec) return;
+  rec.content = doc.content;
+  rec.updated = Date.now();
   try {
-    if (isDocxFile(file)) {
-      const imp = await readImport(file); // 변환 후 현재 문서를 대체하므로 그 전에 변경 여부를 묻는다
-      if (await guardDirty()) setDoc(imp.name, imp.content, null);
-      return;
+    await putDoc(rec);
+    void snapshot(rec.id, rec.content).catch(() => { /* 이력은 부가 기능이라 실패해도 무시 */ });
+    scheduleGc();
+  } catch { /* 토스트로 알렸다 */ }
+}
+
+export async function save(): Promise<boolean> {
+  await flush();
+  if (!failed) toast('저장했습니다');
+  return !failed;
+}
+
+// ---- 문서 목록 ----
+export async function openDoc(id: string) {
+  await flush();
+  const rec = all.get(id);
+  if (!rec) return;
+  Object.assign(doc, { path: id, name: rec.name, content: rec.content, dirty: false });
+  doc.key++;
+  void snapshot(id, rec.content).catch(() => { /* 무시 */ });
+  try { localStorage.setItem(LAST_KEY, id); } catch { /* 무시 */ }
+}
+
+// 같은 이름이 있으면 '이름 (2).md' 처럼 번호를 붙인다
+function uniqueName(stem: string): string {
+  const names = new Set([...all.values()].map((r) => r.name.toLowerCase()));
+  for (let i = 1; ; i++) {
+    const name = i === 1 ? `${stem}.md` : `${stem} (${i}).md`;
+    if (!names.has(name.toLowerCase())) return name;
+  }
+}
+
+async function createRec(stem: string, content: string) {
+  const rec: Rec = { id: crypto.randomUUID(), name: uniqueName(stem), content, updated: Date.now() };
+  await putDoc(rec);
+  all.set(rec.id, rec);
+  refreshList();
+  await openDoc(rec.id);
+}
+
+const toStem = (name: string) => sanitizeName(name.replace(/\.(md|markdown|txt)$/i, '')) || '새 문서';
+
+export async function createDoc() {
+  const name = await askPrompt('새 문서 이름', '새 문서');
+  if (name === null) return;
+  try { await createRec(toStem(name), ''); } catch { /* 토스트로 알렸다 */ }
+}
+
+export async function renameDoc(meta: DocMeta) {
+  const rec = all.get(meta.id);
+  if (!rec) return;
+  const input = await askPrompt('새 이름', stripExt(rec.name));
+  if (input === null) return;
+  const name = `${toStem(input)}.md`;
+  if (name === rec.name) return;
+  if ([...all.values()].some((r) => r.id !== rec.id && r.name.toLowerCase() === name.toLowerCase())) {
+    toast('같은 이름의 문서가 있습니다', 'error');
+    return;
+  }
+  if (rec.id === doc.path) await flush();
+  const prev = rec.name;
+  rec.name = name;
+  try {
+    await putDoc(rec);
+  } catch {
+    rec.name = prev;
+    return;
+  }
+  if (rec.id === doc.path) doc.name = name;
+  refreshList();
+}
+
+export async function removeDoc(meta: DocMeta) {
+  if (!(await askConfirm(`'${stripExt(meta.name)}' 문서를 삭제할까요? 되돌릴 수 없습니다.`, '삭제'))) return;
+  try {
+    await idb('docs', 'readwrite', (s) => s.delete(meta.id));
+    await removeHistory(meta.id).catch(() => { /* 무시 */ });
+  } catch (e) {
+    toast(`삭제하지 못했습니다: ${errMsg(e)}`, 'error');
+    return;
+  }
+  if (meta.id === doc.path) {
+    clearTimeout(timer);
+    Object.assign(doc, { path: '', name: '제목 없음', content: '', dirty: false });
+    doc.key++;
+    try { localStorage.removeItem(LAST_KEY); } catch { /* 무시 */ }
+  }
+  all.delete(meta.id);
+  refreshList();
+  void gcImages();
+}
+
+// 이력의 버전으로 되돌린다. 되돌리기 직전의 현재 내용도 이력에 남긴다.
+export async function restoreVersion(content: string) {
+  if (!doc.path) return;
+  await snapshot(doc.path, doc.content, true);
+  clearTimeout(timer);
+  doc.content = content;
+  doc.key++;
+  await flush();
+  if (failed) throw new Error('저장에 실패했습니다');
+}
+
+// ---- 이미지 ----
+// 문서에는 `idb:<id>` 로 적고, 화면에는 Blob 에서 만든 object URL 로 보여 준다.
+const IDB_SRC = /^idb:([0-9a-f-]{36})$/;
+const IDB_REF = /idb:([0-9a-f-]{36})/g;
+const GC_GRACE_MS = 5 * 60 * 1000; // 방금 넣은 이미지나 실행 취소로 되살릴 수 있는 이미지는 지우지 않는다
+
+const urls = new Map<string, Promise<string>>();
+
+async function storeImage(blob: Blob): Promise<string> {
+  const id = crypto.randomUUID();
+  await idb('images', 'readwrite', (s) => s.put({ id, blob, created: Date.now() } satisfies Img));
+  urls.set(id, Promise.resolve(URL.createObjectURL(blob)));
+  return `idb:${id}`;
+}
+
+async function loadImage(id: string): Promise<Blob | null> {
+  const img = await idb<Img | undefined>('images', 'readonly', (s) => s.get(id));
+  return img?.blob ?? null;
+}
+
+export function upload(file: File): Promise<string> {
+  return storeImage(file);
+}
+
+export function resolveUrl(src: string): string | Promise<string> {
+  const id = IDB_SRC.exec(src)?.[1];
+  if (!id) return src;
+  let url = urls.get(id);
+  if (!url) {
+    url = loadImage(id).then((b) => {
+      if (!b) throw new Error('이미지를 찾을 수 없습니다');
+      return URL.createObjectURL(b);
+    });
+    urls.set(id, url);
+  }
+  return url;
+}
+
+// 저장마다 전체 이력을 훑지 않도록 정리는 GC_MIN_INTERVAL_MS 에 한 번만 한다 (삭제 때는 바로 실행)
+const GC_MIN_INTERVAL_MS = 30_000;
+let lastGc = 0;
+let gcTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleGc() {
+  if (gcTimer) return;
+  const wait = Math.max(0, lastGc + GC_MIN_INTERVAL_MS - Date.now());
+  gcTimer = setTimeout(() => { gcTimer = undefined; void gcImages(); }, wait);
+}
+
+// 어떤 문서와 이력도 참조하지 않는 이미지를 지운다
+async function gcImages() {
+  lastGc = Date.now();
+  try {
+    const used = new Set<string>();
+    for (const r of all.values()) for (const m of r.content.matchAll(IDB_REF)) used.add(m[1]);
+    for (const c of await allContents()) for (const m of c.matchAll(IDB_REF)) used.add(m[1]);
+    const imgs = await idb<Img[]>('images', 'readonly', (s) => s.getAll());
+    const now = Date.now();
+    for (const img of imgs) {
+      if (used.has(img.id) || now - img.created < GC_GRACE_MS) continue;
+      await idb('images', 'readwrite', (s) => s.delete(img.id));
+      const u = urls.get(img.id);
+      urls.delete(img.id);
+      void u?.then((url) => URL.revokeObjectURL(url), () => {});
     }
-    if (!(await guardDirty())) return;
-    setDoc(file.name, await file.text(), h);
+  } catch { /* 정리는 다음 저장 때 다시 시도한다 */ }
+}
+
+// 가져온 문서의 Base64 이미지를 Blob 으로 분리한다
+async function splitImages(md: string): Promise<string> {
+  const r = await replaceImages(md, async (src) =>
+    src.startsWith('data:image/') ? storeImage(await (await fetch(src)).blob()) : null,
+  );
+  return r.text;
+}
+
+// 내보내기용: `idb:` 이미지를 data URI 로 되돌린다
+async function inlineImages(md: string) {
+  return replaceImages(md, async (src) => {
+    const id = IDB_SRC.exec(src)?.[1];
+    if (!id) return null;
+    const blob = await loadImage(id);
+    return blob ? fileToDataUrl(blob) : null;
+  });
+}
+
+// ---- 가져오기: 열기 / 드롭 / 붙여넣기는 항상 새 문서로 추가한다 ----
+export async function createFromText(name: string, text: string) {
+  try {
+    await createRec(toStem(name), await splitImages(text));
   } catch (e) {
     toast(errMsg(e), 'error');
   }
 }
 
-// 붙여넣은 텍스트로 새 문서를 만든다
-export async function createFromText(name: string, text: string) {
-  if (!(await guardDirty())) return;
-  const stem = name.replace(/.(md|markdown|txt)$/i, '').trim() || '새 문서';
-  setDoc(`${stem}.md`, text, null);
-}
-
-export async function openPicker() {
+async function importFile(file: File) {
   try {
-    if (fsaSupported) {
-      const [h] = await w.showOpenFilePicker!({ types: OPEN_TYPES, multiple: false });
-      await openFile(await h.getFile(), h);
-    } else {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.md,.markdown,.txt,.docx,text/markdown,text/plain';
-      input.onchange = () => { if (input.files?.[0]) void openFile(input.files[0]); };
-      input.click();
-    }
+    const imp = await readImport(file);
+    await createRec(toStem(imp.name), await splitImages(imp.content));
   } catch (e) {
-    if (!(e instanceof DOMException && e.name === 'AbortError')) toast(errMsg(e), 'error');
+    toast(`'${file.name}': ${errMsg(e)}`, 'error');
   }
 }
 
-export function isDocFile(f: File): boolean {
-  return /\.(md|markdown|txt)$/i.test(f.name) || f.type === 'text/markdown';
-}
-
-export function exportMd() {
-  const name = /\.(md|markdown|txt)$/i.test(doc.name) ? doc.name : `${doc.name}.md`;
-  downloadText(name, doc.content);
-}
-
-// Ctrl+S: 열어둔 파일(또는 새로 고른 파일)에 덮어쓰고, 미지원 브라우저는 다운로드
-export async function save(): Promise<boolean> {
-  try {
-    if (!fsaSupported) {
-      exportMd();
-      doc.dirty = false;
-      saveDraft();
-      return true;
-    }
-    if (!handle) {
-      handle = await w.showSaveFilePicker!({ suggestedName: doc.name, types: MD_TYPES });
-      doc.name = handle.name;
-    }
-    const wr = await handle.createWritable();
-    await wr.write(doc.content);
-    await wr.close();
-    doc.dirty = false;
-    saveDraft();
-    toast(`'${doc.name}' 에 저장했습니다`);
-    return true;
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') return false;
-    toast(`저장 실패: ${errMsg(e)}`, 'error');
-    return false;
-  }
-}
-
-// 스탠드얼론은 이미지를 항상 Base64 로 문서에 넣는다
-export function upload(file: File): Promise<string> {
-  return fileToDataUrl(file);
-}
-export const resolveUrl = (src: string) => src;
-
-// 드롭된 파일. 핸들은 드롭 이벤트 안에서 동기적으로 요청해 둬야 한다.
-export interface Dropped {
-  file: File;
-  handle: Promise<FsHandle | null>;
-}
-
-// 드롭: .md/.txt 는 현재 문서를 대체해 열고(FSA 지원 시 원본에 덮어쓰기 가능), .docx 는 변환해서 연다
-export async function handleDrop(items: Dropped[]) {
-  const first = items.find((d) => isImportable(d.file));
-  if (!first) {
+export async function importFiles(files: File[]) {
+  const list = files.filter(isImportable);
+  if (!list.length) {
     toast('.md / .txt / .docx 파일만 열 수 있습니다', 'error');
     return;
   }
-  let h: FsHandle | null = null;
-  if (isTextDocFile(first.file)) {
-    try {
-      const got = await first.handle;
-      h = got && 'createWritable' in got ? got : null;
-    } catch { /* 핸들 없이 열기 */ }
+  for (const f of list) await importFile(f);
+}
+
+export function openPicker() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.multiple = true;
+  input.accept = '.md,.markdown,.txt,.docx,text/markdown,text/plain';
+  input.onchange = () => { void importFiles([...(input.files ?? [])]); };
+  input.click();
+}
+
+// ---- 내보내기 ----
+export async function exportMd() {
+  if (!doc.path) return;
+  try {
+    const { text } = await inlineImages(doc.content);
+    downloadText(/\.(md|markdown|txt)$/i.test(doc.name) ? doc.name : `${doc.name}.md`, text);
+  } catch (e) {
+    toast(`.md 내보내기 실패: ${errMsg(e)}`, 'error');
   }
-  await openFile(first.file, h);
 }
 
 // ---- docx 내보내기와 템플릿 ----
@@ -199,7 +336,7 @@ export const tpl = $state({ name: '' });
 
 export async function loadTemplateInfo() {
   try {
-    const t = await idb<{ name: string; blob: Blob } | undefined>('readonly', (s) => s.get('template'));
+    const t = await idb<{ name: string; blob: Blob } | undefined>('kv', 'readonly', (s) => s.get('template'));
     tpl.name = t?.name ?? '';
   } catch { /* 기본 템플릿 */ }
 }
@@ -212,7 +349,7 @@ export function pickTemplate() {
     const f = input.files?.[0];
     if (!f) return;
     try {
-      await idb('readwrite', (s) => s.put({ name: f.name, blob: f }, 'template'));
+      await idb('kv', 'readwrite', (s) => s.put({ name: f.name, blob: f }, 'template'));
       tpl.name = f.name;
       toast(`DOCX 템플릿을 '${f.name}' 으로 지정했습니다`);
     } catch (e) {
@@ -223,19 +360,21 @@ export function pickTemplate() {
 }
 
 export async function clearTemplate() {
-  try { await idb('readwrite', (s) => s.delete('template')); } catch { /* 무시 */ }
+  try { await idb('kv', 'readwrite', (s) => s.delete('template')); } catch { /* 무시 */ }
   tpl.name = '';
   toast('기본 템플릿을 사용합니다');
 }
 
 export async function exportDocxCurrent() {
+  if (!doc.path) return;
   try {
     let template: Blob | null = null;
     if (tpl.name) {
-      const t = await idb<{ name: string; blob: Blob } | undefined>('readonly', (s) => s.get('template'));
+      const t = await idb<{ name: string; blob: Blob } | undefined>('kv', 'readonly', (s) => s.get('template'));
       template = t?.blob ?? null;
     }
-    await exportDocx(doc.content, doc.name, template);
+    const { text } = await inlineImages(doc.content);
+    await exportDocx(text, doc.name, template);
   } catch (e) {
     toast(`DOCX 내보내기 실패: ${errMsg(e)}`, 'error');
   }

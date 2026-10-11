@@ -5,18 +5,23 @@
   import DropOverlay from './DropOverlay.svelte';
   import PasteModal from './PasteModal.svelte';
   import ExportMenu from './ExportMenu.svelte';
+  import HistoryPanel from './HistoryPanel.svelte';
   import FilePlus from '@lucide/svelte/icons/file-plus';
   import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
   import FolderOpen from '@lucide/svelte/icons/folder-open';
-  import Save from '@lucide/svelte/icons/save';
+  import FileText from '@lucide/svelte/icons/file-text';
+  import Pencil from '@lucide/svelte/icons/pencil';
+  import Trash2 from '@lucide/svelte/icons/trash-2';
+  import PanelLeft from '@lucide/svelte/icons/panel-left';
   import { doc } from '../store.svelte';
   import {
-    init, save, exportMd, openPicker, newDoc, onEditorChange, upload, resolveUrl, handleDrop, fsaSupported,
-    createFromText, exportDocxCurrent, tpl, pickTemplate, clearTemplate,
+    lib, init, save, flush, exportMd, openPicker, openDoc, createDoc, renameDoc, removeDoc, onEditorChange,
+    upload, resolveUrl, importFiles, createFromText, exportDocxCurrent, tpl, pickTemplate, clearTemplate, restoreVersion,
   } from '../standalone-mode.svelte';
   import { stripExt } from '../utils';
 
   let pasteOpen = $state(false);
+  let sidebarOpen = $state(true);
 
   const templateOptions = $derived([
     { id: '', label: '기본 템플릿' },
@@ -29,51 +34,86 @@
     if (!(e.ctrlKey || e.metaKey)) return;
     const k = e.key.toLowerCase();
     if (k === 's') { e.preventDefault(); void save(); }
-    else if (k === 'o') { e.preventDefault(); void openPicker(); }
+    else if (k === 'o') { e.preventDefault(); openPicker(); }
   }
-  function onBeforeUnload(e: BeforeUnloadEvent) {
-    if (doc.dirty) e.preventDefault();
-  }
+  // 입력 후 디바운스 대기 중인 내용을 탭을 숨기거나 닫을 때 바로 기록한다
+  function onHide() { void flush(); }
 </script>
 
-<svelte:window onkeydown={onKey} onbeforeunload={onBeforeUnload} />
+<svelte:window onkeydown={onKey} onpagehide={onHide} />
+<svelte:document onvisibilitychange={() => { if (document.visibilityState === 'hidden') onHide(); }} />
 <svelte:head>
-  <title>{doc.dirty ? '● ' : ''}{stripExt(doc.name)}</title>
+  <title>{doc.path ? stripExt(doc.name) : 'Notes'}</title>
 </svelte:head>
 
-<div class="shell single">
+<div class="shell">
+  {#if sidebarOpen}
+    <aside class="sidebar">
+      <header>
+        <span class="root-btn" title="이 브라우저에 보관된 문서">Notes</span>
+        <span class="ops-head">
+          <button class="icon-btn" title="새 문서" aria-label="새 문서" onclick={createDoc}><FilePlus size={17} /></button>
+          <button class="icon-btn" title="붙여넣어 새 문서 만들기" aria-label="붙여넣어 새 문서 만들기" onclick={() => (pasteOpen = true)}><ClipboardPaste size={17} /></button>
+          <button class="icon-btn" title="파일 가져오기 (Ctrl+O)" aria-label="파일 가져오기" onclick={openPicker}><FolderOpen size={17} /></button>
+        </span>
+      </header>
+      <nav class="tree">
+        {#if lib.docs.length}
+          <ul>
+            {#each lib.docs as d (d.id)}
+              <li>
+                <div class="row" class:active={doc.path === d.id} style:padding-left="8px">
+                  <button class="name" onclick={() => openDoc(d.id)}>
+                    <span class="twisty"></span>
+                    <FileText size={15} class="ico" />
+                    <span class="label">{stripExt(d.name)}</span>
+                  </button>
+                  <span class="ops">
+                    <button title="이름 변경" aria-label="이름 변경" onclick={() => renameDoc(d)}><Pencil size={14} /></button>
+                    <button title="삭제" aria-label="삭제" onclick={() => removeDoc(d)}><Trash2 size={14} /></button>
+                  </span>
+                </div>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="empty">문서가 없습니다. 위의 새 문서 버튼으로 만들거나 .md · .txt · .docx 파일을 끌어다 놓으세요. 문서는 이 브라우저에 보관됩니다.</p>
+        {/if}
+      </nav>
+    </aside>
+  {/if}
+
   <main class="main">
     <header class="topbar">
-      <h1 class="doc-title">
-        {stripExt(doc.name)}
-        {#if doc.dirty}<span class="dot" title="저장 안 됨">●</span>{/if}
-      </h1>
+      <button class="icon-btn" aria-label="사이드바 토글" onclick={() => (sidebarOpen = !sidebarOpen)}><PanelLeft size={18} /></button>
+      <h1 class="doc-title">{doc.path ? stripExt(doc.name) : '문서를 선택하세요'}</h1>
       <span class="spacer"></span>
-      <button onclick={newDoc}><FilePlus size={15} />새 문서</button>
-      <button onclick={() => (pasteOpen = true)} title="붙여넣은 텍스트로 새 문서 만들기"><ClipboardPaste size={15} />붙여넣기</button>
-      <button onclick={openPicker} title="Ctrl+O"><FolderOpen size={15} />열기</button>
-      <ExportMenu
-        onMd={exportMd}
-        onDocx={exportDocxCurrent}
-        options={templateOptions}
-        selected={tpl.name ? 'custom' : ''}
-        onSelect={(id) => { if (id === '') void clearTemplate(); }}
-        actions={[{ label: '템플릿 .docx 파일 선택…', run: pickTemplate }]}
-        hint="템플릿은 이 브라우저에 보관됩니다. 첫 docx 사용 때 pandoc 엔진(약 16MB)을 내려받습니다."
-      />
-      {#if fsaSupported}
-        <button class="primary" onclick={save} title="열어 둔 파일에 덮어씁니다 (Ctrl+S)"><Save size={15} />저장</button>
+      {#if doc.path}
+        <HistoryPanel docKey={doc.path} {resolveUrl} onRestore={restoreVersion} />
+        <ExportMenu
+          onMd={exportMd}
+          onDocx={exportDocxCurrent}
+          options={templateOptions}
+          selected={tpl.name ? 'custom' : ''}
+          onSelect={(id) => { if (id === '') void clearTemplate(); }}
+          actions={[{ label: '템플릿 .docx 파일 선택…', run: pickTemplate }]}
+          hint="템플릿은 이 브라우저에 보관됩니다. 첫 docx 사용 때 pandoc 엔진(약 16MB)을 내려받습니다."
+        />
       {/if}
       <Settings />
     </header>
 
     <section class="editor-wrap">
-      {#key doc.key}
-        <Editor initial={doc.content} onChange={onEditorChange} {upload} {resolveUrl} />
-      {/key}
+      {#if doc.path}
+        {#key doc.key}
+          <Editor initial={doc.content} onChange={onEditorChange} {upload} {resolveUrl} />
+        {/key}
+      {:else}
+        <div class="placeholder">왼쪽 목록에서 문서를 열거나 새로 만드세요.</div>
+      {/if}
     </section>
   </main>
 </div>
 
-<DropOverlay onDrop={handleDrop} />
+<DropOverlay onDrop={(items) => importFiles(items.map((d) => d.file))} />
 <PasteModal open={pasteOpen} onClose={() => (pasteOpen = false)} onCreate={createFromText} />

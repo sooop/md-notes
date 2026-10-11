@@ -3,18 +3,27 @@ export type Theme = 'system' | 'light' | 'dark';
 export type ImageMode = 'file' | 'base64';
 
 const SETTINGS_KEY = 'notes.settings';
+const SETTINGS_VERSION = 2;
 
 function loadSettings() {
   const base = {
     theme: 'system' as Theme,
-    autosave: false,
+    autosave: true,
     imageMode: 'file' as ImageMode,
     fontSize: 16, // 에디터 기본 글자 크기(px)
     contentWidth: 860, // 본문 최대 폭(px), 0 이면 전체 폭
     template: '', // 서버 버전의 docx 템플릿 파일명, 빈 값이면 기본 템플릿
+    version: SETTINGS_VERSION,
   };
   try {
-    return { ...base, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') };
+    const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
+    const merged = { ...base, ...stored };
+    // v2: 자동 저장 기본값이 ON 으로 바뀌었다. 이전 설정을 가진 사용자도 한 번만 ON 으로 전환한다(이후 끄면 존중).
+    if (stored.version !== SETTINGS_VERSION) {
+      merged.autosave = true;
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+    }
+    return merged;
   } catch {
     return base;
   }

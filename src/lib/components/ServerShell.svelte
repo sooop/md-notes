@@ -6,6 +6,7 @@
   import DropOverlay from './DropOverlay.svelte';
   import PasteModal from './PasteModal.svelte';
   import ExportMenu from './ExportMenu.svelte';
+  import HistoryPanel from './HistoryPanel.svelte';
   import FilePlus from '@lucide/svelte/icons/file-plus';
   import FolderPlus from '@lucide/svelte/icons/folder-plus';
   import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
@@ -17,6 +18,7 @@
   import {
     tree, nav, templates, init, save, onEditorChange, upload, resolveUrl, createDoc, createFolder,
     convertImages, createFromText, handleDrop, exportDocxCurrent, exportMdCurrent, refreshTemplates, selectTemplate,
+    restoreVersion,
   } from '../server-mode.svelte';
   import { stripExt } from '../utils';
 
@@ -106,6 +108,7 @@
             </div>
           {/if}
         </div>
+        <HistoryPanel docKey={doc.path} {resolveUrl} onRestore={restoreVersion} />
         <ExportMenu
           onMd={exportMdCurrent}
           onDocx={exportDocxCurrent}

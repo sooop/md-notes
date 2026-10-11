@@ -103,3 +103,14 @@ export function guessTitle(text: string): string {
     .replace(/[*_`~[\]()!]/g, '');
   return sanitizeName(plain).slice(0, 40).trim();
 }
+
+// '방금 전' / '12분 전' / '3시간 전' / '10월 5일 14:30' 형태의 상대 시각
+export function relTime(ts: number): string {
+  const sec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (sec < 60) return '방금 전';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분 전`;
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour}시간 전`;
+  return new Date(ts).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+}

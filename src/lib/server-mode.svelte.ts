@@ -7,6 +7,7 @@ import {
   isExternalSrc, replaceImages, downloadText,
 } from './utils';
 import { exportDocx, isImportable, readImport } from './docx-flow';
+import { snapshot, moveHistory, removeHistory } from './history';
 
 // 새 문서를 만들 폴더(사이드바에서 선택한 폴더, 열린 문서의 폴더). 빈 문자열이면 루트.
 export const nav = $state({ dir: '' });
@@ -61,17 +62,28 @@ export async function init() {
 }
 
 // ---- 문서 열기/저장 ----
+// 자동 저장: 입력이 AUTOSAVE_IDLE_MS 멈추면 저장하고, 계속 입력해도 첫 변경 후 AUTOSAVE_MAX_MS 가 지나면 저장한다
+const AUTOSAVE_IDLE_MS = 700;
+const AUTOSAVE_MAX_MS = 10_000;
 let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
+let autosaveMaxTimer: ReturnType<typeof setTimeout> | undefined;
+
+function clearAutosave() {
+  clearTimeout(autosaveTimer);
+  clearTimeout(autosaveMaxTimer);
+  autosaveMaxTimer = undefined;
+}
 
 async function loadDoc(path: string) {
   const f = await call<{ content: string }>(`/api/file?path=${q(path)}`);
-  clearTimeout(autosaveTimer);
+  clearAutosave();
   doc.path = path;
   nav.dir = dirname(path);
   doc.name = basename(path);
   doc.content = f.content;
   doc.dirty = false;
   doc.key++;
+  void snapshot(path, f.content).catch(() => { /* 이력은 부가 기능이라 실패해도 무시 */ });
   try { localStorage.setItem(LAST_KEY, path); } catch { /* 무시 */ }
 }
 
@@ -92,11 +104,13 @@ export async function openDoc(path: string) {
 
 export async function save(): Promise<boolean> {
   if (!doc.path) return false;
-  clearTimeout(autosaveTimer);
+  clearAutosave();
   doc.saving = true;
   try {
-    await call(`/api/file?path=${q(doc.path)}`, jsonInit('PUT', { content: doc.content }));
+    const { path, content } = doc;
+    await call(`/api/file?path=${q(path)}`, jsonInit('PUT', { content }));
     doc.dirty = false;
+    void snapshot(path, content).catch(() => { /* 무시 */ });
     return true;
   } catch (e) {
     toast(`저장 실패: ${errMsg(e)}`, 'error');
@@ -110,7 +124,20 @@ export function onEditorChange(md: string) {
   doc.content = md;
   doc.dirty = true;
   clearTimeout(autosaveTimer);
-  if (settings.autosave && doc.path) autosaveTimer = setTimeout(() => void save(), 1500);
+  if (!settings.autosave || !doc.path) return;
+  autosaveTimer = setTimeout(() => void save(), AUTOSAVE_IDLE_MS);
+  autosaveMaxTimer ??= setTimeout(() => void save(), AUTOSAVE_MAX_MS);
+}
+
+// 이력의 버전으로 되돌린다. 되돌리기 직전의 현재 내용도 이력에 남긴다.
+export async function restoreVersion(content: string) {
+  if (!doc.path) return;
+  await snapshot(doc.path, doc.content, true);
+  clearAutosave();
+  doc.content = content;
+  doc.dirty = true;
+  doc.key++;
+  if (!(await save())) throw new Error('저장에 실패했습니다');
 }
 
 // ---- 파일 트리 조작 ----
@@ -163,6 +190,7 @@ export async function renameNode(node: TreeNode) {
   const to = joinPath(dirname(node.path), next);
   try {
     await call('/api/rename', jsonInit('POST', { from: node.path, to }));
+    await moveHistory(node.path, to).catch(() => { /* 무시 */ });
     const reopen = affects(node.path) ? to + doc.path.slice(node.path.length) : '';
     if (nav.dir === node.path || nav.dir.startsWith(node.path + '/')) nav.dir = to + nav.dir.slice(node.path.length);
     await refreshTree();
@@ -177,9 +205,10 @@ export async function removeNode(node: TreeNode) {
   if (!(await askConfirm(`${what}를 삭제할까요? 되돌릴 수 없습니다.`, '삭제'))) return;
   try {
     await call(`/api/file?path=${q(node.path)}`, { method: 'DELETE' });
+    await removeHistory(node.path).catch(() => { /* 무시 */ });
     if (nav.dir === node.path || nav.dir.startsWith(node.path + '/')) nav.dir = dirname(node.path);
     if (affects(node.path)) {
-      clearTimeout(autosaveTimer);
+      clearAutosave();
       Object.assign(doc, { path: '', name: '제목 없음', content: '', dirty: false });
       doc.key++;
       try { localStorage.removeItem(LAST_KEY); } catch { /* 무시 */ }

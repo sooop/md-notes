@@ -17,9 +17,10 @@
     initial: string;
     onChange: (md: string) => void;
     upload: (file: File) => Promise<string>;
-    resolveUrl: (src: string) => string;
+    resolveUrl: (src: string) => string | Promise<string>;
+    readonly?: boolean; // 이력 미리보기처럼 편집하지 않는 용도
   }
-  let { initial, onChange, upload, resolveUrl }: Props = $props();
+  let { initial, onChange, upload, resolveUrl, readonly = false }: Props = $props();
 
   let host: HTMLDivElement;
 
@@ -43,12 +44,13 @@
           inlineOnUpload: upload,
           proxyDomURL: resolveUrl,
         });
+      if (readonly) c.setReadonly(true);
       c.on((l) => l.markdownUpdated((_ctx, md, prev) => { if (md !== prev) onChange(md); }));
       c.create().then(() => {
         if (disposed) void c.destroy();
         else {
           crepe = c;
-          editorBridge.getMarkdown = () => c.getMarkdown();
+          if (!readonly) editorBridge.getMarkdown = () => c.getMarkdown();
         }
       });
     });

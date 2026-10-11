@@ -43,7 +43,7 @@
   --hl-punct: #6b6a64;
   --hl-inserted: #2f7d32;
   --hl-deleted: #b3261e;
-  --font-code: ui-monospace, 'Cascadia Code', 'D2Coding', Consolas, 'SFMono-Regular', monospace;
+  --font-code: 'Geist Mono', 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace;
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
@@ -395,3 +395,39 @@ button svg { flex: none; }
 .row .ops button { padding: 3px 4px; }
 .menu-list button { justify-content: flex-start; }
 .menu-list button .check { display: inline-flex; width: 18px; align-items: center; }
+
+/* Crepe 는 코드 블록 placeholder 에만 코드 폰트를 지정하므로 CodeMirror 에디터에도 적용한다 */
+.milkdown .milkdown-code-block .cm-editor .cm-scroller { font-family: var(--font-code); }
+
+/* 제목 크기: Crepe 기본(h1 2.625em ~ h3 2em)이 본문 대비 과해서 줄인다. em 이라 글자 크기 설정을 따른다 */
+:root .milkdown .ProseMirror h1 { font-size: 1.75em; font-weight: 700; line-height: 1.3; margin-top: 28px; margin-bottom: 12px; }
+:root .milkdown .ProseMirror h2 { font-size: 1.4em; font-weight: 700; line-height: 1.3; margin-top: 24px; margin-bottom: 10px; }
+:root .milkdown .ProseMirror h3 { font-size: 1.125em; font-weight: 600; line-height: 1.35; margin-top: 20px; margin-bottom: 8px; }
+:root .milkdown .ProseMirror h4 { font-size: 1.05em; font-weight: 600; line-height: 1.4; margin-top: 16px; margin-bottom: 6px; }
+:root .milkdown .ProseMirror h5 { font-size: 1em; font-weight: 600; line-height: 1.5; margin-top: 12px; margin-bottom: 4px; }
+:root .milkdown .ProseMirror h6 { font-size: 0.9em; font-weight: 600; line-height: 1.5; margin-top: 12px; margin-bottom: 4px; }
+
+/* 조판 간격: Crepe 기본(블록 margin 4px)이 촘촘해서 블록 요소의 위·아래 여백을 넓힌다 */
+:root .milkdown .ProseMirror p { padding: 6px 0; }
+:root .milkdown .ProseMirror ul,
+:root .milkdown .ProseMirror ol { margin: 8px 0; }
+:root .milkdown .ProseMirror blockquote { margin: 16px 0; padding-top: 2px; padding-bottom: 2px; }
+:root .milkdown .ProseMirror hr { margin: 20px 0; }
+:root .milkdown .milkdown-table-block { margin: 16px 0; }
+:root .milkdown .milkdown-table-block th,
+:root .milkdown .milkdown-table-block td { padding: 8px 16px; }
+:root .milkdown .milkdown-code-block { margin: 16px 0; padding-top: 12px; }
+:root .milkdown .milkdown-image-block { margin: 16px 0; }
+
+/* 버전 이력 대화상자: 왼쪽 목록 + 오른쪽 읽기 전용 미리보기 */
+.dialog.history { width: min(980px, calc(100vw - 32px)); display: flex; flex-direction: column; max-height: calc(100vh - 48px); }
+.dialog.history h2 .sub { margin-left: 8px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.dialog.history .muted { color: var(--muted); }
+.history-body { display: flex; gap: 12px; min-height: 0; height: min(560px, calc(100vh - 200px)); margin-bottom: 16px; }
+.history-list { flex: none; width: 200px; margin: 0; padding: 0; list-style: none; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+.history-list button { display: flex; justify-content: space-between; width: 100%; border: 0; border-radius: 0; padding: 8px 12px; background: transparent; text-align: left; font-size: 13px; }
+.history-list button:hover { background: var(--hover); }
+.history-list button.active { background: var(--selected); }
+.history-preview { flex: 1; min-width: 0; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+:root .history-preview .milkdown .ProseMirror { padding: 16px 24px 32px; }
+@media (max-width: 720px) { .history-body { flex-direction: column; height: auto; } .history-list { width: auto; max-height: 160px; } .history-preview { max-height: 50vh; } }

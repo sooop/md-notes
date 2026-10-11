@@ -43,7 +43,7 @@ const dotenv = {
   },
 };
 
-export const codeLanguages: LanguageDescription[] = [
+const languageList: LanguageDescription[] = [
   LanguageDescription.of({
     name: 'JavaScript',
     alias: ['js', 'jsx', 'mjs', 'cjs', 'node'],
@@ -150,6 +150,17 @@ export const codeLanguages: LanguageDescription[] = [
     load: () => import('@codemirror/legacy-modes/mode/diff').then((m) => stream(m.diff)),
   }),
 ];
+
+// Milkdown 의 언어 로더는 alias 로만 조회하고 name 은 보지 않는다.
+// 그래서 ```python, ```css 처럼 name 과 같은 표기가 매칭되지 않으므로 소문자 name 을 alias 에 추가한다.
+export const codeLanguages: LanguageDescription[] = languageList.map((l) =>
+  LanguageDescription.of({
+    name: l.name,
+    alias: [...new Set([l.name.toLowerCase(), ...l.alias])],
+    extensions: l.extensions,
+    load: () => l.load(),
+  }),
+);
 
 // 색은 CSS 변수(--hl-*)로 정의해 라이트/다크 테마와 함께 바뀐다 (app.css 참고)
 const v = (name: string) => `var(--hl-${name})`;

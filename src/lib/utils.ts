@@ -1,0 +1,105 @@
+export const dirname = (p: string) => {
+  const i = p.lastIndexOf('/');
+  return i < 0 ? '' : p.slice(0, i);
+};
+export const basename = (p: string) => p.slice(p.lastIndexOf('/') + 1);
+export const stripExt = (n: string) => n.replace(/\.[^./]+$/, '');
+
+// 슬래시 경로 결합 + '.', '..' 정규화
+export function joinPath(...parts: string[]): string {
+  const out: string[] = [];
+  for (const seg of parts.join('/').split('/')) {
+    if (!seg || seg === '.') continue;
+    if (seg === '..') out.pop();
+    else out.push(seg);
+  }
+  return out.join('/');
+}
+
+export function safeDecode(s: string): string {
+  try { return decodeURIComponent(s); } catch { return s; }
+}
+
+export function fileToDataUrl(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error ?? new Error('파일을 읽지 못했습니다'));
+    r.readAsDataURL(file);
+  });
+}
+
+export function imageExt(file: Blob & { name?: string }): string {
+  const t = file.type.replace('image/', '').replace('+xml', '').replace('jpeg', 'jpg');
+  if (t && /^[a-z0-9]+$/.test(t)) return t;
+  const m = /\.([a-z0-9]+)$/i.exec(file.name ?? '');
+  return m ? m[1].toLowerCase() : 'png';
+}
+
+// 마크다운 이미지 문법: ![alt](src "title") / ![alt](<src>)
+export const IMAGE_RE = /!\[([^\]]*)\]\((<[^>]+>|[^)\s]+)((?:\s+"[^"]*")?)\)/g;
+
+export function isExternalSrc(src: string): boolean {
+  return /^(https?:|data:|blob:|\/)/i.test(src);
+}
+
+// 이미지 참조를 비동기로 치환한다. fn 이 null 을 주면 그대로 둔다.
+export async function replaceImages(
+  md: string,
+  fn: (src: string) => Promise<string | null>,
+): Promise<{ text: string; count: number }> {
+  const matches = [...md.matchAll(IMAGE_RE)];
+  let count = 0;
+  const results = await Promise.all(
+    matches.map(async (m) => {
+      const raw = m[2];
+      const src = raw.startsWith('<') ? raw.slice(1, -1) : raw;
+      const next = await fn(src);
+      return next === null ? null : { m, next };
+    }),
+  );
+  let text = '';
+  let last = 0;
+  for (const r of results) {
+    if (!r) continue;
+    const { m, next } = r;
+    const idx = m.index ?? 0;
+    const wrapped = /\s/.test(next) ? `<${next}>` : next;
+    text += md.slice(last, idx) + `![${m[1]}](${wrapped}${m[3]})`;
+    last = idx + m[0].length;
+    count++;
+  }
+  return { text: text + md.slice(last), count };
+}
+
+export function downloadBlob(name: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export const downloadText = (name: string, text: string) =>
+  downloadBlob(name, new Blob([text], { type: 'text/markdown;charset=utf-8' }));
+
+// 파일명으로 쓸 수 없는 문자를 걷어낸다
+export function sanitizeName(s: string): string {
+  return s
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\.+/, '');
+}
+
+// 본문 첫 줄(제목 문법 제거)에서 문서 이름 후보를 뽑는다
+export function guessTitle(text: string): string {
+  const line = text.split(/\r?\n/).find((l) => l.trim()) ?? '';
+  const plain = line
+    .replace(/^\s*(#{1,6}\s+|[-*+>]\s+|\d+\.\s+)/, '')
+    .replace(/[*_`~[\]()!]/g, '');
+  return sanitizeName(plain).slice(0, 40).trim();
+}

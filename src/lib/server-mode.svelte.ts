@@ -9,6 +9,8 @@ import {
 import { exportDocx, isImportable, readImport } from './docx-flow';
 import { snapshot, moveHistory, removeHistory } from './history';
 import type { SearchResponse, FileHit } from './search/types';
+import { useBackend, flushComments } from './comments/store.svelte';
+import { sanitize } from './comments/anchor';
 
 // 새 문서를 만들 폴더(사이드바에서 선택한 폴더, 열린 문서의 폴더). 빈 문자열이면 루트.
 export const nav = $state({ dir: '', filter: '' }); // filter: 사이드바 파일명 검색어
@@ -50,6 +52,11 @@ export async function refreshTree() {
 }
 
 export async function init() {
+  // 코멘트는 노트 폴더의 .comments/<경로>.json 사이드카에 둔다
+  useBackend({
+    load: async (key) => sanitize((await call<{ comments: unknown }>(`/api/comments?path=${q(key)}`)).comments),
+    save: async (key, comments) => { await call(`/api/comments?path=${q(key)}`, jsonInit('PUT', { comments })); },
+  });
   try {
     const info = await call<{ root: string }>('/api/info');
     tree.root = info.root;
@@ -83,6 +90,7 @@ async function loadDoc(path: string) {
   doc.name = basename(path);
   doc.content = f.content;
   doc.dirty = false;
+  doc.edit = false; // 기존 문서는 항상 읽기 모드로 연다
   doc.key++;
   void snapshot(path, f.content).catch(() => { /* 이력은 부가 기능이라 실패해도 무시 */ });
   try { localStorage.setItem(LAST_KEY, path); } catch { /* 무시 */ }
@@ -181,6 +189,7 @@ export async function createDoc(dir: string) {
     await call('/api/create', jsonInit('POST', { path, type: 'file' }));
     await refreshTree();
     await openDoc(path);
+    if (doc.path === path) doc.edit = true; // 새로 만든 문서는 편집 모드로 시작
   } catch (e) {
     toast(errMsg(e), 'error');
   }
@@ -208,6 +217,7 @@ export async function renameNode(node: TreeNode) {
   if (affects(node.path) && !(await guardDirty())) return;
   const to = joinPath(dirname(node.path), next);
   try {
+    await flushComments(); // 대기 중인 코멘트 저장이 옮기기 전 경로에 파일을 다시 만들지 않도록
     await call('/api/rename', jsonInit('POST', { from: node.path, to }));
     await moveHistory(node.path, to).catch(() => { /* 무시 */ });
     const reopen = affects(node.path) ? to + doc.path.slice(node.path.length) : '';
@@ -223,6 +233,7 @@ export async function removeNode(node: TreeNode) {
   const what = node.type === 'dir' ? `폴더 '${node.name}' 와 그 안의 모든 문서` : `문서 '${node.name}'`;
   if (!(await askConfirm(`${what}를 삭제할까요? 되돌릴 수 없습니다.`, '삭제'))) return;
   try {
+    await flushComments();
     await call(`/api/file?path=${q(node.path)}`, { method: 'DELETE' });
     await removeHistory(node.path).catch(() => { /* 무시 */ });
     if (nav.dir === node.path || nav.dir.startsWith(node.path + '/')) nav.dir = dirname(node.path);
@@ -305,7 +316,7 @@ async function createUnique(dir: string, stem: string): Promise<string> {
 }
 
 // 내용으로 새 문서를 만들어 연다. docx 에서 온 Base64 이미지는 설정이 '파일'이면 assets 로 분리한다.
-export async function createFromContent(stem: string, content: string, opts: { splitImages?: boolean } = {}) {
+export async function createFromContent(stem: string, content: string, opts: { splitImages?: boolean; edit?: boolean } = {}) {
   const path = await createUnique(nav.dir, stem);
   let text = content;
   if (opts.splitImages && settings.imageMode === 'file') {
@@ -317,12 +328,13 @@ export async function createFromContent(stem: string, content: string, opts: { s
   await call(`/api/file?path=${q(path)}`, jsonInit('PUT', { content: text }));
   await refreshTree();
   await openDoc(path);
+  if (opts.edit && doc.path === path) doc.edit = true;
 }
 
 export async function createFromText(name: string, text: string) {
   try {
     const stem = name.replace(/\.(md|markdown|txt)$/i, '').trim() || '새 문서';
-    await createFromContent(stem, text);
+    await createFromContent(stem, text, { edit: true }); // 붙여넣어 만든 문서는 편집 모드로 시작
   } catch (e) {
     toast(errMsg(e), 'error');
   }

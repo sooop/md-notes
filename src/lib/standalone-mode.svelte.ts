@@ -1,26 +1,30 @@
 // 스탠드얼론 HTML 버전: IndexedDB 에 문서 여러 개와 이미지 Blob, docx 템플릿을 보관하는 라이브러리.
 // 디스크 파일과는 연동하지 않는다(열기/드롭/붙여넣기는 가져오기, .md/.docx 는 내보내기).
-import { doc, toast, askPrompt, askConfirm, errMsg } from './store.svelte';
-import { downloadText, fileToDataUrl, replaceImages, sanitizeName, stripExt } from './utils';
+import { doc, toast, askPrompt, askConfirm, errMsg, withStatus } from './store.svelte';
+import { buildArchive, parseArchive } from './archive';
+import { downloadBlob, downloadText, fileToDataUrl, replaceImages, sanitizeName, stripExt } from './utils';
 import { exportDocx, isImportable, readImport } from './docx-flow';
 import { buildMatcher, searchText } from '../../server/searchCore.js';
 import type { SearchResponse } from './search/types';
 import { snapshot, removeHistory, allContents } from './history';
+import { useBackend, flushComments } from './comments/store.svelte';
+import { sanitize, type Comment } from './comments/anchor';
 
 // ---- IndexedDB ----
-// kv: docx 템플릿 / docs: 문서 / images: 문서에서 `idb:<id>` 로 참조하는 이미지 Blob
+// kv: docx 템플릿 / docs: 문서 / images: 문서에서 `idb:<id>` 로 참조하는 이미지 Blob / comments: 문서별 코멘트 목록(키 = 문서 id)
 const DB = 'notes-standalone';
-type Store = 'kv' | 'docs' | 'images';
+type Store = 'kv' | 'docs' | 'images' | 'comments';
 
 let dbPromise: Promise<IDBDatabase> | undefined;
 function openDb(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 2);
+    const req = indexedDB.open(DB, 3);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
       if (!db.objectStoreNames.contains('docs')) db.createObjectStore('docs', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('images')) db.createObjectStore('images', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('comments')) db.createObjectStore('comments', { keyPath: 'id' });
       req.transaction!.objectStore('kv').delete('draft'); // v1 의 임시 보관 문서는 이관하지 않고 버린다
     };
     req.onsuccess = () => resolve(req.result);
@@ -63,7 +67,18 @@ async function putDoc(rec: Rec) {
   }
 }
 
+// 코멘트: 문서 id 별로 한 레코드. 비면 레코드를 지운다.
+async function loadComments(id: string): Promise<Comment[]> {
+  const r = await idb<{ id: string; comments: unknown } | undefined>('comments', 'readonly', (s) => s.get(id));
+  return sanitize(r?.comments);
+}
+async function saveComments(id: string, comments: Comment[]) {
+  if (!comments.length) await idb('comments', 'readwrite', (s) => s.delete(id));
+  else await idb('comments', 'readwrite', (s) => s.put({ id, comments }));
+}
+
 export async function init() {
+  useBackend({ load: loadComments, save: saveComments });
   void loadTemplateInfo();
   try {
     await navigator.storage?.persist?.(); // 브라우저가 임의로 비우지 않도록 요청(거절돼도 무시)
@@ -114,7 +129,7 @@ export async function openDoc(id: string) {
   await flush();
   const rec = all.get(id);
   if (!rec) return;
-  Object.assign(doc, { path: id, name: rec.name, content: rec.content, dirty: false });
+  Object.assign(doc, { path: id, name: rec.name, content: rec.content, dirty: false, edit: false }); // 기존 문서는 항상 읽기 모드로 연다
   doc.key++;
   void snapshot(id, rec.content).catch(() => { /* 무시 */ });
   try { localStorage.setItem(LAST_KEY, id); } catch { /* 무시 */ }
@@ -129,12 +144,14 @@ function uniqueName(stem: string): string {
   }
 }
 
-async function createRec(stem: string, content: string) {
+// edit: 열었을 때 편집 모드로 시작할지 (새로 만든 문서·붙여넣은 문서). 가져온 파일은 읽기 모드로 연다.
+async function createRec(stem: string, content: string, open = true, edit = false): Promise<Rec> {
   const rec: Rec = { id: crypto.randomUUID(), name: uniqueName(stem), content, updated: Date.now() };
   await putDoc(rec);
   all.set(rec.id, rec);
   refreshList();
-  await openDoc(rec.id);
+  if (open) { await openDoc(rec.id); if (doc.path === rec.id) doc.edit = edit; }
+  return rec;
 }
 
 const toStem = (name: string) => sanitizeName(name.replace(/\.(md|markdown|txt)$/i, '')) || '새 문서';
@@ -142,7 +159,7 @@ const toStem = (name: string) => sanitizeName(name.replace(/\.(md|markdown|txt)$
 export async function createDoc() {
   const name = await askPrompt('새 문서 이름', '새 문서');
   if (name === null) return;
-  try { await createRec(toStem(name), ''); } catch { /* 토스트로 알렸다 */ }
+  try { await createRec(toStem(name), '', true, true); } catch { /* 토스트로 알렸다 */ }
 }
 
 export async function renameDoc(meta: DocMeta) {
@@ -172,7 +189,9 @@ export async function renameDoc(meta: DocMeta) {
 export async function removeDoc(meta: DocMeta) {
   if (!(await askConfirm(`'${stripExt(meta.name)}' 문서를 삭제할까요? 되돌릴 수 없습니다.`, '삭제'))) return;
   try {
+    await flushComments(); // 대기 중인 코멘트 저장이 삭제 뒤에 레코드를 되살리지 않도록
     await idb('docs', 'readwrite', (s) => s.delete(meta.id));
+    await idb('comments', 'readwrite', (s) => s.delete(meta.id)).catch(() => { /* 무시 */ });
     await removeHistory(meta.id).catch(() => { /* 무시 */ });
   } catch (e) {
     toast(`삭제하지 못했습니다: ${errMsg(e)}`, 'error');
@@ -310,7 +329,7 @@ async function inlineImages(md: string) {
 // ---- 가져오기: 열기 / 드롭 / 붙여넣기는 항상 새 문서로 추가한다 ----
 export async function createFromText(name: string, text: string) {
   try {
-    await createRec(toStem(name), await splitImages(text));
+    await createRec(toStem(name), await splitImages(text), true, true); // 붙여넣어 만든 문서는 편집 모드로 시작
   } catch (e) {
     toast(errMsg(e), 'error');
   }
@@ -325,12 +344,48 @@ async function importFile(file: File) {
   }
 }
 
+// 전체 백업 zip 가져오기: 문서마다 새 문서로 추가하고(같은 이름은 번호), 상대 경로 이미지는 Blob 으로 분리한다
+const isZip = (f: File) => /\.zip$/i.test(f.name) || f.type === 'application/zip';
+
+async function importZip(file: File) {
+  try {
+    await withStatus('압축 파일을 읽는 중…', async (set) => {
+      const docs = parseArchive(new Uint8Array(await file.arrayBuffer()));
+      if (!docs.length) throw new Error('가져올 문서(.md / .markdown / .txt)가 없습니다');
+      const stored = new Map<string, Promise<string>>(); // zip 내부 이미지 경로 → idb: 참조 (같은 이미지는 한 번만 보관)
+      let ok = 0;
+      let fail = 0;
+      for (const d of docs) {
+        set(`가져오는 중… ${ok + fail + 1} / ${docs.length}`);
+        try {
+          const linked = await replaceImages(d.content, async (src) => {
+            const img = d.image(src);
+            if (!img) return null;
+            let ref = stored.get(img.key);
+            if (!ref) { ref = storeImage(new Blob([img.data as BlobPart], { type: img.mime })); stored.set(img.key, ref); }
+            return ref;
+          });
+          const rec = await createRec(toStem(d.stem), await splitImages(linked.text), false);
+          if (d.comments.length) await saveComments(rec.id, d.comments);
+          ok++;
+        } catch { fail++; }
+      }
+      if (ok && !doc.path) { const first = lib.docs[0]; if (first) await openDoc(first.id); }
+      toast(`'${file.name}' 에서 문서 ${ok}개를 가져왔습니다${fail ? ` (${fail}개 실패)` : ''}`, fail ? 'error' : 'info');
+    });
+  } catch (e) {
+    toast(`'${file.name}': ${errMsg(e)}`, 'error');
+  }
+}
+
 export async function importFiles(files: File[]) {
-  const list = files.filter(isImportable);
-  if (!list.length) {
-    toast('.md / .txt / .docx 파일만 열 수 있습니다', 'error');
+  const zips = files.filter(isZip);
+  const list = files.filter((f) => !isZip(f) && isImportable(f));
+  if (!zips.length && !list.length) {
+    toast('.md / .txt / .docx / .zip 파일만 열 수 있습니다', 'error');
     return;
   }
+  for (const f of zips) await importZip(f);
   for (const f of list) await importFile(f);
 }
 
@@ -338,7 +393,7 @@ export function openPicker() {
   const input = document.createElement('input');
   input.type = 'file';
   input.multiple = true;
-  input.accept = '.md,.markdown,.txt,.docx,text/markdown,text/plain';
+  input.accept = '.md,.markdown,.txt,.docx,.zip,text/markdown,text/plain,application/zip';
   input.onchange = () => { void importFiles([...(input.files ?? [])]); };
   input.click();
 }
@@ -351,6 +406,28 @@ export async function exportMd() {
     downloadText(/\.(md|markdown|txt)$/i.test(doc.name) ? doc.name : `${doc.name}.md`, text);
   } catch (e) {
     toast(`.md 내보내기 실패: ${errMsg(e)}`, 'error');
+  }
+}
+
+// 모든 문서와 이미지를 zip 하나로 내려받는다 (백업 / 다른 브라우저로 이전 / 서버 모드 폴더로 이전)
+export async function exportAll() {
+  await flush();
+  await flushComments();
+  if (!all.size) { toast('내보낼 문서가 없습니다'); return; }
+  try {
+    await withStatus('백업 파일을 만드는 중…', async () => {
+      const byDoc = new Map((await idb<{ id: string; comments: unknown }[]>('comments', 'readonly', (s) => s.getAll())).map((r) => [r.id, sanitize(r.comments)]));
+      const docs = [...all.values()]
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        .map((r) => ({ name: r.name, content: r.content, comments: byDoc.get(r.id) }));
+      const blob = await buildArchive(docs, loadImage);
+      const d = new Date();
+      const p = (n: number) => String(n).padStart(2, '0');
+      downloadBlob(`notes-backup-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.zip`, blob);
+      toast(`문서 ${docs.length}개를 zip 으로 내려받았습니다`);
+    });
+  } catch (e) {
+    toast(`백업 내보내기 실패: ${errMsg(e)}`, 'error');
   }
 }
 

@@ -63,6 +63,7 @@ export const doc = $state({
   content: '',
   dirty: false,
   saving: false,
+  edit: false, // 편집 모드 여부. 기존 문서는 읽기 모드로 열고, 새로 만든 문서만 편집 모드로 시작한다
 });
 
 // 마지막 에디터 내용을 외부에서 읽기 위한 훅 (Editor 가 등록)

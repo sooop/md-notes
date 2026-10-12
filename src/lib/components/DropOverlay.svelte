@@ -46,5 +46,5 @@
 <svelte:window ondragenter={enter} ondragleave={leave} ondragover={over} ondrop={drop} />
 
 {#if dragging}
-  <div class="drop-overlay">.md · .txt · .docx 파일을 여기에 놓아 새 문서 만들기</div>
+  <div class="drop-overlay">.md · .txt · .docx · .zip 파일을 여기에 놓아 새 문서 만들기</div>
 {/if}

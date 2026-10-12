@@ -13,24 +13,35 @@
   import { editorViewCtx } from '@milkdown/kit/core';
   import { editorBridge, doc } from '../store.svelte';
   import { attachFinder } from '../search/pmSearch';
+  import { bindComments } from '../comments/store.svelte';
   import { finder } from '../search/state.svelte';
   import { codeLanguages, codeHighlight } from '../codeLanguages';
+  import { onlyDoubleTilde } from '../gfmTilde';
 
   interface Props {
     initial: string;
     onChange: (md: string) => void;
     upload: (file: File) => Promise<string>;
     resolveUrl: (src: string) => string | Promise<string>;
-    readonly?: boolean; // 이력 미리보기처럼 편집하지 않는 용도
+    readonly?: boolean; // 읽기 모드 (바뀌면 에디터를 다시 만들지 않고 편집 가능 여부만 바꾼다)
+    preview?: boolean; // 이력 미리보기: 문서 내 검색·코멘트에 연결하지 않는다
   }
-  let { initial, onChange, upload, resolveUrl, readonly = false }: Props = $props();
+  let { initial, onChange, upload, resolveUrl, readonly = false, preview = false }: Props = $props();
 
   let host: HTMLDivElement;
+  let builder: CrepeBuilder | undefined;
+  let ready = $state(false);
+
+  $effect(() => {
+    const ro = readonly;
+    if (ready) builder?.setReadonly(ro);
+  });
 
   // 문서가 바뀌면 부모가 {#key} 로 이 컴포넌트를 새로 만든다. 여기서는 한 번만 생성한다.
   $effect(() => {
     let crepe: CrepeBuilder | undefined;
     let ctl: ReturnType<typeof attachFinder> | undefined;
+    let unbind: (() => void) | undefined;
     let disposed = false;
     untrack(() => {
       const c = new CrepeBuilder({ root: host, defaultValue: initial })
@@ -48,25 +59,32 @@
           inlineOnUpload: upload,
           proxyDomURL: resolveUrl,
         });
+      onlyDoubleTilde(c.editor); // 취소선은 ~~A~~ 만 인식하고 글자 그대로의 ~ 는 보존한다
       if (readonly) c.setReadonly(true);
       c.on((l) => l.markdownUpdated((_ctx, md, prev) => { if (md !== prev) onChange(md); }));
       c.create().then(() => {
         if (disposed) void c.destroy();
         else {
           crepe = c;
-          if (!readonly) {
+          builder = c;
+          ready = true;
+          if (!preview) {
             editorBridge.getMarkdown = () => c.getMarkdown();
-            // 문서 내 검색: 열린 문서의 에디터만 검색 바에 연결한다
+            // 문서 내 검색·코멘트: 열린 문서의 에디터만 연결한다
             const view = c.editor.action((ctx) => ctx.get(editorViewCtx));
             ctl = attachFinder(view, (st) => Object.assign(finder, st));
             finder.ctlPath = doc.path;
             finder.ctl = ctl;
+            unbind = bindComments(view, doc.path);
           }
         }
       });
     });
     return () => {
       disposed = true;
+      ready = false;
+      builder = undefined;
+      unbind?.();
       if (ctl) {
         ctl.destroy();
         if (finder.ctl === ctl) { finder.ctl = null; finder.total = 0; finder.current = -1; finder.error = ''; }
@@ -76,4 +94,4 @@
   });
 </script>
 
-<div class="editor-host" bind:this={host}></div>
+<div class="editor-host" class:is-readonly={readonly} bind:this={host}></div>

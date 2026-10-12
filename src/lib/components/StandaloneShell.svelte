@@ -4,8 +4,12 @@
   import Settings from './Settings.svelte';
   import DropOverlay from './DropOverlay.svelte';
   import PasteModal from './PasteModal.svelte';
-  import ExportMenu from './ExportMenu.svelte';
+  import MoreMenu from './MoreMenu.svelte';
   import HistoryPanel from './HistoryPanel.svelte';
+  import ModeToggle from './ModeToggle.svelte';
+  import CommentsPanel from './CommentsPanel.svelte';
+  import CommentLayer from './CommentLayer.svelte';
+  import { openCount } from '../comments/store.svelte';
   import FindBar from './FindBar.svelte';
   import SearchPanel from './SearchPanel.svelte';
   import Search from '@lucide/svelte/icons/search';
@@ -13,13 +17,14 @@
   import FilePlus from '@lucide/svelte/icons/file-plus';
   import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
   import FolderOpen from '@lucide/svelte/icons/folder-open';
+  import Archive from '@lucide/svelte/icons/archive';
   import FileText from '@lucide/svelte/icons/file-text';
   import Pencil from '@lucide/svelte/icons/pencil';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import PanelLeft from '@lucide/svelte/icons/panel-left';
   import { doc } from '../store.svelte';
   import {
-    lib, init, save, flush, exportMd, openPicker, openDoc, createDoc, renameDoc, removeDoc, onEditorChange,
+    lib, init, save, flush, exportMd, exportAll, openPicker, openDoc, createDoc, renameDoc, removeDoc, onEditorChange,
     upload, resolveUrl, importFiles, createFromText, exportDocxCurrent, tpl, pickTemplate, clearTemplate, restoreVersion, searchLibrary,
   } from '../standalone-mode.svelte';
   import { stripExt } from '../utils';
@@ -28,6 +33,7 @@
 
   let pasteOpen = $state(false);
   let sidebarOpen = $state(true);
+  let historyOpen = $state(false);
 
   const templateOptions = $derived([
     { id: '', label: '기본 템플릿' },
@@ -64,11 +70,13 @@
           <button class="icon-btn" title="새 문서" aria-label="새 문서" onclick={createDoc}><FilePlus size={17} /></button>
           <button class="icon-btn" title="붙여넣어 새 문서 만들기" aria-label="붙여넣어 새 문서 만들기" onclick={() => (pasteOpen = true)}><ClipboardPaste size={17} /></button>
           <button class="icon-btn" title="파일 가져오기 (Ctrl+O)" aria-label="파일 가져오기" onclick={openPicker}><FolderOpen size={17} /></button>
+          <button class="icon-btn" title="모든 문서를 zip 으로 내보내기 (백업)" aria-label="모든 문서 내보내기" onclick={exportAll}><Archive size={17} /></button>
         </span>
       </header>
       <div class="sidetabs" role="tablist">
         <button role="tab" class:on={ui.tab === 'files'} aria-selected={ui.tab === 'files'} onclick={() => (ui.tab = 'files')}>파일</button>
         <button role="tab" class:on={ui.tab === 'search'} aria-selected={ui.tab === 'search'} onclick={() => { ui.tab = 'search'; ui.globalFocus++; }} title="모든 문서에서 검색 (Ctrl+Shift+F)">검색</button>
+        <button role="tab" class:on={ui.tab === 'comments'} aria-selected={ui.tab === 'comments'} onclick={() => (ui.tab = 'comments')} title="이 문서의 코멘트">코멘트{#if openCount()} <span class="cm-badge">{openCount()}</span>{/if}</button>
       </div>
       <div class="tabpane" hidden={ui.tab !== 'files'}>
         <div class="filterbox">
@@ -98,12 +106,15 @@
           {:else if lib.filter.trim()}
             <p class="empty">'{lib.filter}' 와 일치하는 문서가 없습니다.</p>
           {:else}
-            <p class="empty">문서가 없습니다. 위의 새 문서 버튼으로 만들거나 .md · .txt · .docx 파일을 끌어다 놓으세요. 문서는 이 브라우저에 보관됩니다.</p>
+            <p class="empty">문서가 없습니다. 위의 새 문서 버튼으로 만들거나 .md · .txt · .docx · 백업 .zip 파일을 끌어다 놓으세요. 문서는 이 브라우저에 보관됩니다.</p>
           {/if}
         </nav>
       </div>
       <div class="tabpane" hidden={ui.tab !== 'search'}>
         <SearchPanel run={searchLibrary} onOpen={openDoc} activeId={doc.path} />
+      </div>
+      <div class="tabpane" hidden={ui.tab !== 'comments'}>
+        <CommentsPanel />
       </div>
     </aside>
   {/if}
@@ -114,8 +125,10 @@
       <h1 class="doc-title">{doc.path ? stripExt(doc.name) : '문서를 선택하세요'}</h1>
       <span class="spacer"></span>
       {#if doc.path}
-        <HistoryPanel docKey={doc.path} {resolveUrl} onRestore={restoreVersion} />
-        <ExportMenu
+        <ModeToggle />
+        <HistoryPanel docKey={doc.path} {resolveUrl} onRestore={restoreVersion} bind:open={historyOpen} />
+        <MoreMenu
+          onHistory={() => (historyOpen = true)}
           onMd={exportMd}
           onDocx={exportDocxCurrent}
           options={templateOptions}
@@ -132,8 +145,9 @@
       <FindBar />
       {#if doc.path}
         {#key doc.key}
-          <Editor initial={doc.content} onChange={onEditorChange} {upload} {resolveUrl} />
+          <Editor initial={doc.content} onChange={onEditorChange} {upload} {resolveUrl} readonly={!doc.edit} />
         {/key}
+        <CommentLayer />
       {:else}
         <div class="placeholder">왼쪽 목록에서 문서를 열거나 새로 만드세요.</div>
       {/if}

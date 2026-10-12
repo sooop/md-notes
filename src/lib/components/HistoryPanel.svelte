@@ -1,6 +1,5 @@
 <script lang="ts">
   import Editor from './Editor.svelte';
-  import HistoryIcon from '@lucide/svelte/icons/history';
   import { listVersions, MAX_VERSIONS, type Version } from '../history';
   import { toast, errMsg } from '../store.svelte';
   import { relTime } from '../utils';
@@ -9,18 +8,16 @@
     docKey: string; // 이력을 조회할 문서 키 (스탠드얼론: 문서 id, 서버: 파일 경로)
     resolveUrl: (src: string) => string | Promise<string>;
     onRestore: (content: string) => Promise<void>;
+    open?: boolean; // 문서 메뉴의 '이력' 항목이 연다
   }
-  let { docKey, resolveUrl, onRestore }: Props = $props();
-
-  let open = $state(false);
+  let { docKey, resolveUrl, onRestore, open = $bindable(false) }: Props = $props();
   let versions = $state<Version[]>([]);
   let selectedId = $state('');
   let loading = $state(false);
 
   const selected = $derived(versions.find((v) => v.id === selectedId));
 
-  async function show() {
-    open = true;
+  async function load() {
     loading = true;
     try {
       versions = await listVersions(docKey);
@@ -32,6 +29,10 @@
       loading = false;
     }
   }
+
+  $effect(() => {
+    if (open) void load();
+  });
 
   async function restore() {
     if (!selected) return;
@@ -50,8 +51,6 @@
 </script>
 
 <svelte:window onkeydown={(e) => { if (open && e.key === 'Escape') open = false; }} />
-
-<button onclick={show} title="이 문서의 이전 버전 보기"><HistoryIcon size={15} />이력</button>
 
 {#if open}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -77,7 +76,7 @@
           <div class="history-preview">
             {#key selectedId}
               {#if selected}
-                <Editor initial={selected.content} onChange={noop} upload={noUpload} {resolveUrl} readonly />
+                <Editor initial={selected.content} onChange={noop} upload={noUpload} {resolveUrl} readonly preview />
               {/if}
             {/key}
           </div>

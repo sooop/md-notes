@@ -14,6 +14,7 @@ const MIME = {
 const MAX_JSON = 20 * 1024 * 1024;
 const MAX_UPLOAD = 50 * 1024 * 1024;
 const SKIP_DIRS = new Set(['node_modules', 'assets']);
+const COMMENTS_DIR = '.comments'; // 코멘트 사이드카: .comments/<문서 경로>.json (숨김 폴더라 트리·검색에서 제외된다)
 const SEARCH = { perFile: 50, total: 500, maxBytes: 2 * 1024 * 1024, timeoutMs: 8000 };
 const SEARCH_WORKER = fileURLToPath(new URL('./searchWorker.js', import.meta.url));
 
@@ -78,6 +79,38 @@ export function createApi(rootInput, opts = {}) {
   };
 
   async function exists(p) { try { await fs.access(p); return true; } catch { return false; } }
+
+  // 문서의 코멘트 사이드카 파일 경로 (루트 밖으로 나가지 않는지 검사한다)
+  async function commentFile(relPath) {
+    const docAbs = await safe(relPath, { mustExist: false });
+    if (!isMd(docAbs)) throw new HttpError(400, '.md 문서만 가능');
+    return safe(`${COMMENTS_DIR}/${rel(docAbs)}.json`, { mustExist: false });
+  }
+  // 문서·폴더를 옮기거나 지울 때 사이드카도 함께 처리한다 (없으면 무시)
+  async function moveComments(fromRel, toRel, isFile) {
+    try {
+      const sfx = isFile ? '.json' : '';
+      const a = await safe(`${COMMENTS_DIR}/${fromRel}${sfx}`);
+      const b = await safe(`${COMMENTS_DIR}/${toRel}${sfx}`, { mustExist: false });
+      await fs.mkdir(path.dirname(b), { recursive: true });
+      await fs.rename(a, b);
+    } catch { /* 코멘트가 없으면 그대로 */ }
+  }
+  async function removeComments(relPath, isFile) {
+    try {
+      const target = await safe(`${COMMENTS_DIR}/${relPath}${isFile ? '.json' : ''}`, { mustExist: false });
+      await fs.rm(target, { recursive: true, force: true });
+    } catch { /* 무시 */ }
+  }
+  const cleanComment = (c) => {
+    if (!c || typeof c !== 'object' || typeof c.quote !== 'string' || !c.quote || typeof c.id !== 'string') return null;
+    const s = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
+    const t = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : Date.now());
+    return {
+      id: s(c.id, 64), quote: s(c.quote, 3000), prefix: s(c.prefix, 200), suffix: s(c.suffix, 200), text: s(c.text, 20000),
+      created: t(c.created), updated: t(c.updated), resolved: c.resolved === true,
+    };
+  };
 
   async function buildTree(dirAbs) {
     const entries = await fs.readdir(dirAbs, { withFileTypes: true });
@@ -152,6 +185,28 @@ export function createApi(rootInput, opts = {}) {
       return runSearch(req, files, query, opts);
     },
 
+    // 코멘트: 원문(.md)은 건드리지 않고 .comments/<문서 경로>.json 에 따로 둔다. 비면 파일을 지운다.
+    'GET /api/comments': async (_req, q) => {
+      const file = await commentFile(q.get('path'));
+      try {
+        const j = JSON.parse(await fs.readFile(file, 'utf8'));
+        return { comments: Array.isArray(j.comments) ? j.comments : [] };
+      } catch {
+        return { comments: [] };
+      }
+    },
+
+    'PUT /api/comments': async (req, q) => {
+      const file = await commentFile(q.get('path'));
+      const { comments } = await readJson(req);
+      if (!Array.isArray(comments)) throw new HttpError(400, 'comments 필요');
+      const clean = comments.map(cleanComment).filter(Boolean);
+      if (!clean.length) { await fs.rm(file, { force: true }); return { ok: true }; }
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, JSON.stringify({ version: 1, comments: clean }, null, 2), 'utf8');
+      return { ok: true };
+    },
+
     'GET /api/file': async (_req, q) => {
       const abs = await safe(q.get('path'));
       if (!isMd(abs)) throw new HttpError(400, '.md 파일만 허용');
@@ -194,6 +249,7 @@ export function createApi(rootInput, opts = {}) {
       await fs.mkdir(path.dirname(dst), { recursive: true });
       const oldAssets = st.isFile() ? docAssetsDir(src) : null;
       await fs.rename(src, dst);
+      await moveComments(rel(src), rel(dst), st.isFile());
       if (oldAssets && (await exists(oldAssets))) {
         const newAssets = docAssetsDir(dst);
         await fs.mkdir(path.dirname(newAssets), { recursive: true });
@@ -214,10 +270,12 @@ export function createApi(rootInput, opts = {}) {
       const st = await fs.stat(abs);
       if (st.isDirectory()) {
         await fs.rm(abs, { recursive: true });
+        await removeComments(rel(abs), false);
       } else {
         if (!isMd(abs)) throw new HttpError(400, '.md 파일만 허용');
         await fs.rm(abs);
         await fs.rm(docAssetsDir(abs), { recursive: true, force: true });
+        await removeComments(rel(abs), true);
       }
       return { ok: true };
     },

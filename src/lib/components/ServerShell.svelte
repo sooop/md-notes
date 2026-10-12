@@ -5,8 +5,12 @@
   import Settings from './Settings.svelte';
   import DropOverlay from './DropOverlay.svelte';
   import PasteModal from './PasteModal.svelte';
-  import ExportMenu from './ExportMenu.svelte';
+  import MoreMenu from './MoreMenu.svelte';
   import HistoryPanel from './HistoryPanel.svelte';
+  import ModeToggle from './ModeToggle.svelte';
+  import CommentsPanel from './CommentsPanel.svelte';
+  import CommentLayer from './CommentLayer.svelte';
+  import { openCount } from '../comments/store.svelte';
   import FindBar from './FindBar.svelte';
   import SearchPanel from './SearchPanel.svelte';
   import Search from '@lucide/svelte/icons/search';
@@ -16,8 +20,6 @@
   import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
   import PanelLeft from '@lucide/svelte/icons/panel-left';
   import Save from '@lucide/svelte/icons/save';
-  import Image from '@lucide/svelte/icons/image';
-  import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import { doc, settings } from '../store.svelte';
   import {
     tree, nav, templates, init, openDoc, save, onEditorChange, upload, resolveUrl, createDoc, createFolder,
@@ -29,7 +31,7 @@
   import { filterTree } from '../search/nameMatch';
 
   let sidebarOpen = $state(true);
-  let convertOpen = $state(false);
+  let historyOpen = $state(false);
   let pasteOpen = $state(false);
 
   const templateOptions = $derived([
@@ -55,10 +57,6 @@
   }
   function onBeforeUnload(e: BeforeUnloadEvent) {
     if (doc.dirty) e.preventDefault();
-  }
-  function convert(to: 'base64' | 'file') {
-    convertOpen = false;
-    void convertImages(to);
   }
 </script>
 
@@ -86,6 +84,7 @@
       <div class="sidetabs" role="tablist">
         <button role="tab" class:on={ui.tab === 'files'} aria-selected={ui.tab === 'files'} onclick={() => (ui.tab = 'files')}>파일</button>
         <button role="tab" class:on={ui.tab === 'search'} aria-selected={ui.tab === 'search'} onclick={() => { ui.tab = 'search'; ui.globalFocus++; }} title="모든 문서에서 검색 (Ctrl+Shift+F)">검색</button>
+        <button role="tab" class:on={ui.tab === 'comments'} aria-selected={ui.tab === 'comments'} onclick={() => (ui.tab = 'comments')} title="이 문서의 코멘트">코멘트{#if openCount()} <span class="cm-badge">{openCount()}</span>{/if}</button>
       </div>
       <div class="tabpane" hidden={ui.tab !== 'files'}>
         <div class="filterbox">
@@ -110,6 +109,9 @@
       <div class="tabpane" hidden={ui.tab !== 'search'}>
         <SearchPanel run={searchFiles} onOpen={openDoc} activeId={doc.path} />
       </div>
+      <div class="tabpane" hidden={ui.tab !== 'comments'}>
+        <CommentsPanel />
+      </div>
     </aside>
   {/if}
 
@@ -122,19 +124,11 @@
       </h1>
       <span class="spacer"></span>
       {#if doc.path}
-        <div class="menu">
-          <button onclick={() => (convertOpen = !convertOpen)} aria-expanded={convertOpen}><Image size={15} />이미지 변환<ChevronDown size={14} /></button>
-          {#if convertOpen}
-            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-            <div class="backdrop" onclick={() => (convertOpen = false)}></div>
-            <div class="popover menu-list">
-              <button onclick={() => convert('base64')}>이 문서의 이미지를 Base64로 변환</button>
-              <button onclick={() => convert('file')}>이 문서의 이미지를 파일로 분리</button>
-            </div>
-          {/if}
-        </div>
-        <HistoryPanel docKey={doc.path} {resolveUrl} onRestore={restoreVersion} />
-        <ExportMenu
+        <ModeToggle />
+        <HistoryPanel docKey={doc.path} {resolveUrl} onRestore={restoreVersion} bind:open={historyOpen} />
+        <MoreMenu
+          onHistory={() => (historyOpen = true)}
+          onImages={(to) => void convertImages(to)}
           onMd={exportMdCurrent}
           onDocx={exportDocxCurrent}
           options={templateOptions}
@@ -154,8 +148,9 @@
       <FindBar />
       {#if doc.path}
         {#key doc.key}
-          <Editor initial={doc.content} onChange={onEditorChange} {upload} {resolveUrl} />
+          <Editor initial={doc.content} onChange={onEditorChange} {upload} {resolveUrl} readonly={!doc.edit} />
         {/key}
+        <CommentLayer />
       {:else}
         <div class="placeholder">왼쪽 목록에서 문서를 열거나 새로 만드세요.</div>
       {/if}

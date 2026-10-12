@@ -491,3 +491,55 @@ input.invalid { color: #c0392b; }
 :root .milkdown .ProseMirror .search-hit.search-current { background: rgba(255, 140, 0, 0.75); outline: 1px solid rgb(230, 120, 0); }
 :root .milkdown .ProseMirror .search-code-hit { outline: 2px dashed rgba(255, 200, 0, 0.8); outline-offset: -2px; }
 :root .milkdown .ProseMirror .search-code-current { outline: 2px solid rgb(230, 120, 0); }
+
+/* ---- 코멘트: 본문 표시, 사이드바 패널, 떠 있는 입력/팝오버 ---- */
+:root { --comment: #4a7fd4; --comment-bg: rgba(74, 127, 212, 0.2); --comment-bg-strong: rgba(74, 127, 212, 0.4); }
+:root[data-theme='dark'] { --comment: #7aa7f0; --comment-bg: rgba(122, 167, 240, 0.22); --comment-bg-strong: rgba(122, 167, 240, 0.42); }
+
+:root .milkdown .ProseMirror .cm-comment { background: var(--comment-bg); border-bottom: 2px solid var(--comment); cursor: pointer; }
+:root .milkdown .ProseMirror .cm-comment.cm-resolved { background: transparent; border-bottom: 1px dotted var(--muted); }
+:root .milkdown .ProseMirror .cm-comment.cm-active { background: var(--comment-bg-strong); }
+:root .milkdown .ProseMirror .cm-comment-code { outline: 2px solid var(--comment); outline-offset: -2px; }
+:root .milkdown .ProseMirror .cm-comment-code.cm-resolved { outline: 1px dotted var(--muted); }
+:root .milkdown .ProseMirror .cm-comment-code.cm-active { outline-width: 3px; }
+
+/* 읽기 모드: 편집용 도구(블록 핸들, 서식 툴바, 슬래시 메뉴)를 숨기고 커서를 일반 텍스트처럼 */
+.editor-host.is-readonly .milkdown-block-handle,
+.editor-host.is-readonly .milkdown-toolbar,
+.editor-host.is-readonly .milkdown-slash-menu { display: none !important; }
+.editor-host.is-readonly .ProseMirror { caret-color: transparent; }
+.modetoggle { display: inline-flex; align-items: center; gap: 4px; min-width: 84px; justify-content: center; }
+.modetoggle.active { background: var(--accent-soft); border-color: var(--accent); }
+
+.cm-layer { position: fixed; z-index: 40; }
+.cm-add { display: inline-flex; align-items: center; gap: 4px; box-shadow: var(--shadow); border-color: var(--comment); }
+.cm-pop {
+  width: 320px; max-height: min(60vh, 480px); overflow: auto; display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: var(--shadow); padding: 10px;
+}
+.cm-layer textarea, .cm-item textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 13px; padding: 6px 8px;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px;
+}
+.cm-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+.cm-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cm-panel .empty { color: var(--muted); padding: 12px; font-size: 13px; }
+.cm-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; font-size: 12px; color: var(--muted); }
+.cm-list { flex: 1; overflow: auto; padding: 0 8px 16px; display: flex; flex-direction: column; gap: 8px; }
+.cm-lost-head { margin: 8px 4px 0; font-size: 12px; color: var(--muted); font-weight: 600; }
+.cm-item { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; }
+.cm-item:not(.lost) { cursor: pointer; }
+.cm-item.active { border-color: var(--comment); }
+.cm-item.resolved .cm-text, .cm-item.resolved .cm-quote { opacity: 0.55; }
+.cm-item.lost { border-style: dashed; }
+.cm-quote {
+  margin: 0; padding: 2px 8px; border-left: 3px solid var(--comment); color: var(--muted); font-size: 12px;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+}
+.cm-text { margin: 0; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cm-lost { margin: 0; font-size: 12px; color: var(--muted); }
+.cm-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); }
+.cm-ops { display: flex; gap: 2px; }
+.cm-ops .icon-btn { padding: 2px; }
+.cm-badge { background: var(--comment); color: #fff; border-radius: 8px; padding: 0 6px; font-size: 11px; }

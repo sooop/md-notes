@@ -23,7 +23,9 @@
     if (--depth <= 0) { depth = 0; dragging = false; }
   }
   function over(e: DragEvent) {
-    if (hasDocDrag(e.dataTransfer)) e.preventDefault();
+    if (!hasDocDrag(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = 'copy';
   }
   function drop(e: DragEvent) {
     depth = 0;
@@ -37,13 +39,19 @@
       const file = it.getAsFile();
       if (!file) continue;
       const getter = (it as DataTransferItem & { getAsFileSystemHandle?: () => Promise<unknown> }).getAsFileSystemHandle;
-      items.push({ file, handle: getter ? getter.call(it).catch(() => null) : Promise.resolve(null) });
+      let handle: Promise<any> = Promise.resolve(null); // eslint-disable-line @typescript-eslint/no-explicit-any
+      try { if (getter) handle = getter.call(it).catch(() => null); } catch { /* 보안 컨텍스트가 아니면 동기 예외 — 핸들 없이 진행 */ }
+      items.push({ file, handle });
+    }
+    // items 로 못 얻었으면(브라우저별 차이) files 로 대신 읽는다
+    if (!items.length) {
+      for (const file of dt!.files) if (!file.type.startsWith('image/')) items.push({ file, handle: Promise.resolve(null) });
     }
     if (items.length) onDrop(items);
   }
 </script>
 
-<svelte:window ondragenter={enter} ondragleave={leave} ondragover={over} ondrop={drop} />
+<svelte:window ondragentercapture={enter} ondragleavecapture={leave} ondragovercapture={over} ondropcapture={drop} />
 
 {#if dragging}
   <div class="drop-overlay">.md · .txt · .docx · .zip 파일을 여기에 놓아 새 문서 만들기</div>

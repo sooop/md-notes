@@ -11,7 +11,9 @@
   import { table } from '@milkdown/crepe/feature/table';
   import { toolbar } from '@milkdown/crepe/feature/toolbar';
   import { editorViewCtx } from '@milkdown/kit/core';
-  import { editorBridge, doc } from '../store.svelte';
+  import { editorBridge, doc, toast, askChoose } from '../store.svelte';
+  import { stripExt } from '../utils';
+  import { tablePaste, attachTableTools } from '../tableTools';
   import { attachFinder } from '../search/pmSearch';
   import { bindComments } from '../comments/store.svelte';
   import { finder } from '../search/state.svelte';
@@ -42,6 +44,7 @@
     let crepe: CrepeBuilder | undefined;
     let ctl: ReturnType<typeof attachFinder> | undefined;
     let unbind: (() => void) | undefined;
+    let unbindTable: (() => void) | undefined;
     let disposed = false;
     untrack(() => {
       const c = new CrepeBuilder({ root: host, defaultValue: initial })
@@ -59,6 +62,8 @@
           inlineOnUpload: upload,
           proxyDomURL: resolveUrl,
         });
+      const tableEnv = { toast, askChoose, docName: () => stripExt(doc.name) };
+      c.editor.use(tablePaste(tableEnv)); // TSV/CSV 붙여넣기 → 표
       onlyDoubleTilde(c.editor); // 취소선은 ~~A~~ 만 인식하고 글자 그대로의 ~ 는 보존한다
       if (readonly) c.setReadonly(true);
       c.on((l) => l.markdownUpdated((_ctx, md, prev) => { if (md !== prev) onChange(md); }));
@@ -68,6 +73,7 @@
           crepe = c;
           builder = c;
           ready = true;
+          unbindTable = attachTableTools(c.editor.action((ctx) => ctx.get(editorViewCtx)), tableEnv); // 표 → TSV/CSV 복사·저장
           if (!preview) {
             editorBridge.getMarkdown = () => c.getMarkdown();
             // 문서 내 검색·코멘트: 열린 문서의 에디터만 연결한다
@@ -85,6 +91,7 @@
       ready = false;
       builder = undefined;
       unbind?.();
+      unbindTable?.();
       if (ctl) {
         ctl.destroy();
         if (finder.ctl === ctl) { finder.ctl = null; finder.total = 0; finder.current = -1; finder.error = ''; }

@@ -543,3 +543,19 @@ input.invalid { color: #c0392b; }
 .cm-ops { display: flex; gap: 2px; }
 .cm-ops .icon-btn { padding: 2px; }
 .cm-badge { background: var(--comment); color: #fff; border-radius: 8px; padding: 0 6px; font-size: 11px; }
+
+/* ---- 표 → CSV/TSV 호버 툴바·우클릭 메뉴 (body 에 붙으므로 에디터 밖 스타일) ---- */
+.tbl-tools, .tbl-menu {
+  position: fixed; z-index: 45; display: flex; gap: 2px; align-items: center;
+  background: var(--bg); border: 1px solid var(--border-strong); border-radius: 8px;
+  box-shadow: var(--shadow); padding: 3px; font-size: 12.5px; color: var(--text);
+}
+.tbl-tools[hidden], .tbl-menu[hidden] { display: none; }
+.tbl-menu { flex-direction: column; align-items: stretch; min-width: 160px; padding: 4px; font-size: 13px; }
+.tbl-tools button, .tbl-menu button {
+  border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer;
+  padding: 4px 8px; border-radius: 5px; text-align: left; white-space: nowrap;
+}
+.tbl-tools button:hover, .tbl-menu button:hover { background: var(--hover); }
+.tbl-hdr { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; cursor: pointer; border-left: 1px solid var(--border); margin-left: 2px; white-space: nowrap; }
+.tbl-hdr input { accent-color: var(--primary); }

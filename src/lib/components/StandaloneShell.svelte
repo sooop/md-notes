@@ -1,6 +1,8 @@
 <script lang="ts">
+  let wrapEl = $state<HTMLElement | null>(null);
   import { onMount } from 'svelte';
   import Editor from './Editor.svelte';
+  import Lightbox from './Lightbox.svelte';
   import Settings from './Settings.svelte';
   import DropOverlay from './DropOverlay.svelte';
   import PasteModal from './PasteModal.svelte';
@@ -141,7 +143,7 @@
       <Settings />
     </header>
 
-    <section class="editor-wrap">
+    <section class="editor-wrap" bind:this={wrapEl}>
       <FindBar />
       {#if doc.path}
         {#key doc.key}
@@ -152,6 +154,7 @@
         <div class="placeholder">왼쪽 목록에서 문서를 열거나 새로 만드세요.</div>
       {/if}
     </section>
+    <Lightbox root={wrapEl} readMode={!doc.edit} />
   </main>
 </div>
 

@@ -2,6 +2,7 @@
   import { onMount, type Component } from 'svelte';
   import Dialog from './lib/components/Dialog.svelte';
   import Toasts from './lib/components/Toasts.svelte';
+  import TableViewer from './lib/components/TableViewer.svelte';
   import { settings, applyTheme } from './lib/store.svelte';
 
   let { Shell }: { Shell: Component } = $props();
@@ -18,3 +19,4 @@
 <Shell />
 <Dialog />
 <Toasts />
+<TableViewer />

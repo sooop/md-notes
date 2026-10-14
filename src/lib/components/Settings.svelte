@@ -1,7 +1,7 @@
 <script lang="ts">
   import SettingsIcon from '@lucide/svelte/icons/settings';
   import {
-    settings, persistSettings, applyTheme, applyLayout, FONT_RANGE, WIDTH_RANGE,
+    settings, persistSettings, applyTheme, applyLayout, FONT_RANGE, WIDTH_RANGE, DEFAULT_FONT_SIZE, DEFAULT_CONTENT_WIDTH,
     type Theme, type ImageMode,
   } from '../store.svelte';
 
@@ -25,12 +25,12 @@
     layoutChanged();
   }
   function toggleFullWidth() {
-    settings.contentWidth = settings.contentWidth > 0 ? 0 : 860;
+    settings.contentWidth = settings.contentWidth > 0 ? 0 : DEFAULT_CONTENT_WIDTH;
     layoutChanged();
   }
   function resetLayout() {
-    settings.fontSize = 16;
-    settings.contentWidth = 860;
+    settings.fontSize = DEFAULT_FONT_SIZE;
+    settings.contentWidth = DEFAULT_CONTENT_WIDTH;
     layoutChanged();
   }
 </script>

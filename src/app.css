@@ -98,12 +98,12 @@
   --crepe-font-code: var(--font-code);
   --crepe-shadow-1: var(--shadow);
   --crepe-shadow-2: var(--shadow);
-  --crepe-base-font-size: var(--editor-font-size, 16px);
+  --crepe-base-font-size: var(--editor-font-size, 15px);
   background: var(--bg);
 }
 :root .milkdown .ProseMirror {
   padding: 40px 48px 120px;
-  max-width: var(--editor-width, 860px);
+  max-width: var(--editor-width, 980px);
   margin: 0 auto;
 }
 
@@ -398,9 +398,14 @@ button svg { flex: none; }
 
 /* Crepe 는 코드 블록 placeholder 에만 코드 폰트를 지정하므로 CodeMirror 에디터에도 적용한다 */
 .milkdown .milkdown-code-block .cm-editor .cm-scroller { font-family: var(--font-code); }
-/* 코드 블록 글자 크기: 본문 대비 과해서 Crepe 기본(0.875배)보다 약 12% 줄인다. 읽기 모드는 placeholder, 편집 모드는 CodeMirror 가 그린다 */
+/* 코드 블록 글자는 본문보다 약간 작게(Crepe 기본 0.875배 → 0.93배). 읽기 모드는 placeholder, 편집 모드는 CodeMirror 가 그린다 */
 :root .milkdown .milkdown-code-block .cm-editor,
-:root .milkdown .milkdown-code-block .milkdown-code-block-placeholder { font-size: calc(var(--crepe-base-font-size, 16px) * 0.77); }
+:root .milkdown .milkdown-code-block .milkdown-code-block-placeholder { font-size: calc(var(--crepe-base-font-size, 15px) * 0.93); }
+/* 줄 간격: CodeMirror 기본(1.4)이 촘촘해서 넓힌다 */
+:root .milkdown .milkdown-code-block .cm-editor .cm-scroller { line-height: 1.65; }
+/* basicSetup 의 현재 행 하이라이트 끄기 (Crepe 가 extensions 에서 빼는 옵션을 주지 않아 CSS 로 무력화) */
+:root .milkdown .milkdown-code-block .cm-editor .cm-activeLine,
+:root .milkdown .milkdown-code-block .cm-editor .cm-activeLineGutter { background-color: transparent !important; }
 
 /* 제목 크기: Crepe 기본(h1 2.625em ~ h3 2em)이 본문 대비 과해서 줄인다. em 이라 글자 크기 설정을 따른다 */
 :root .milkdown .ProseMirror h1 { font-size: 1.75em; font-weight: 700; line-height: 1.3; margin-top: 28px; margin-bottom: 12px; }
@@ -417,8 +422,14 @@ button svg { flex: none; }
 :root .milkdown .ProseMirror blockquote { margin: 16px 0; padding-top: 2px; padding-bottom: 2px; }
 :root .milkdown .ProseMirror hr { margin: 20px 0; }
 :root .milkdown .milkdown-table-block { margin: 16px 0; }
+/* 표: 셀 여백·글자를 줄여 정보 밀도를 높인다 */
+:root .milkdown .milkdown-table-block { font-size: 0.9em; }
+/* 열 너비: ProseMirror 기본(table-layout: fixed)은 1/N 균등 분배라서, 내용 길이에 따라 나누는 auto 로 바꾼다 */
+:root .milkdown .milkdown-table-block table { table-layout: auto; }
 :root .milkdown .milkdown-table-block th,
-:root .milkdown .milkdown-table-block td { padding: 8px 16px; }
+:root .milkdown .milkdown-table-block td { padding: 4px 10px; line-height: 1.45; }
+:root .milkdown .milkdown-table-block th p,
+:root .milkdown .milkdown-table-block td p { padding: 0; margin: 0; }
 :root .milkdown .milkdown-code-block { margin: 16px 0; padding-top: 12px; }
 :root .milkdown .milkdown-image-block { margin: 16px 0; }
 
@@ -496,8 +507,8 @@ input.invalid { color: #c0392b; }
 :root .milkdown .ProseMirror .search-code-current { outline: 2px solid rgb(230, 120, 0); }
 
 /* ---- 코멘트: 본문 표시, 사이드바 패널, 떠 있는 입력/팝오버 ---- */
-:root { --comment: #4a7fd4; --comment-bg: rgba(74, 127, 212, 0.2); --comment-bg-strong: rgba(74, 127, 212, 0.4); }
-:root[data-theme='dark'] { --comment: #7aa7f0; --comment-bg: rgba(122, 167, 240, 0.22); --comment-bg-strong: rgba(122, 167, 240, 0.42); }
+:root { --comment: #ca8a04; --comment-on: #fff; --comment-bg: rgba(250, 204, 21, 0.28); --comment-bg-strong: rgba(250, 204, 21, 0.5); }
+:root[data-theme='dark'] { --comment: #facc15; --comment-on: #2b2100; --comment-bg: rgba(250, 204, 21, 0.22); --comment-bg-strong: rgba(250, 204, 21, 0.42); }
 
 :root .milkdown .ProseMirror .cm-comment { background: var(--comment-bg); border-bottom: 2px solid var(--comment); cursor: pointer; }
 :root .milkdown .ProseMirror .cm-comment.cm-resolved { background: transparent; border-bottom: 1px dotted var(--muted); }
@@ -545,7 +556,7 @@ input.invalid { color: #c0392b; }
 .cm-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); }
 .cm-ops { display: flex; gap: 2px; }
 .cm-ops .icon-btn { padding: 2px; }
-.cm-badge { background: var(--comment); color: #fff; border-radius: 8px; padding: 0 6px; font-size: 11px; }
+.cm-badge { background: var(--comment); color: var(--comment-on); border-radius: 8px; padding: 0 6px; font-size: 11px; }
 
 /* ---- 표 → CSV/TSV 호버 툴바·우클릭 메뉴 (body 에 붙으므로 에디터 밖 스타일) ---- */
 .tbl-tools, .tbl-menu {

@@ -12,6 +12,16 @@ export interface TableToolsEnv {
   askChoose: (message: string, buttons: string[]) => Promise<number>;
   /** 내려받는 파일 이름의 바탕(문서 이름, 확장자 없음) */
   docName: () => string;
+  /** 표를 확대해서 보는 모달을 연다 */
+  openViewer: (t: TableData) => void;
+}
+
+/** 문서 안 표 하나 — 헤더 행을 분리해 둔다(헤더가 꺼진 표는 header 가 열 번호 이름). */
+export interface TableData {
+  /** 문서 안 몇 번째 표인가(1부터) */
+  index: number;
+  header: string[];
+  rows: string[][];
 }
 
 const BLOCK_NO_PASTE = new Set(['code_block', 'table', 'table_cell', 'table_header']);
@@ -84,6 +94,13 @@ function tableRows(table: PMNode): string[][] {
     rows.push(cells);
   });
   return rows;
+}
+
+/** 표 노드 → 헤더/본문. 첫 행 헤더가 꺼진(빈 헤더 행) 표는 `열 N` 이름을 붙이고 빈 행은 버린다. */
+function toTableData(node: PMNode, index: number): TableData {
+  const all = tableRows(node);
+  if (isHeaderOn(node)) return { index, header: all[0], rows: all.slice(1) };
+  return { index, header: all[0].map((_, i) => `열 ${i + 1}`), rows: all.slice(1) };
 }
 
 function findTable(view: EditorView, block: HTMLElement): { node: PMNode; pos: number; index: number } | null {
@@ -188,6 +205,7 @@ export function attachTableTools(view: EditorView, env: TableToolsEnv): () => vo
     if (t) fn(t);
   };
   const actions = (): [string, () => void][] => [
+    ['확대 보기', withTable((t) => env.openViewer(toTableData(t.node, t.index)))],
     ['TSV 로 복사', withTable((t) => copyTable(tableRows(t.node), 'tsv', env))],
     ['CSV 로 복사', withTable((t) => copyTable(tableRows(t.node), 'csv', env))],
     ['CSV 파일로 저장', withTable((t) => saveTable(tableRows(t.node), 'csv', t.index, env))],
@@ -210,8 +228,8 @@ export function attachTableTools(view: EditorView, env: TableToolsEnv): () => vo
     if (!t) return;
     block = b;
     bar.replaceChildren();
-    const [tsvCopy, csvCopy, csvSave] = actions();
-    bar.append(btn('TSV 복사', tsvCopy[1]), btn('CSV 복사', csvCopy[1]), btn('CSV 저장', csvSave[1]));
+    const [zoom, tsvCopy, csvCopy, csvSave] = actions();
+    bar.append(btn('확대', zoom[1]), btn('TSV 복사', tsvCopy[1]), btn('CSV 복사', csvCopy[1]), btn('CSV 저장', csvSave[1]));
     if (view.editable) {
       const label = document.createElement('label');
       label.className = 'tbl-hdr';

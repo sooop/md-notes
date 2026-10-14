@@ -3,24 +3,36 @@ export type Theme = 'system' | 'light' | 'dark';
 export type ImageMode = 'file' | 'base64';
 
 const SETTINGS_KEY = 'notes.settings';
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
+
+/** 기본값 — 설정 팝오버의 "초기화"와 전체 폭 해제도 이 값을 쓴다 */
+export const DEFAULT_FONT_SIZE = 15; // 에디터 기본 글자 크기(px)
+export const DEFAULT_CONTENT_WIDTH = 980; // 본문 최대 폭(px), 0 이면 전체 폭
+/** 기본값이 바뀌기 전(v2 이하)의 기본값 — 저장돼 있어도 사용자가 고른 값이 아니므로 새 기본값으로 옮긴다 */
+const LEGACY_DEFAULTS = { fontSize: 16, contentWidth: 860 };
 
 function loadSettings() {
   const base = {
     theme: 'system' as Theme,
     autosave: true,
     imageMode: 'file' as ImageMode,
-    fontSize: 16, // 에디터 기본 글자 크기(px)
-    contentWidth: 860, // 본문 최대 폭(px), 0 이면 전체 폭
+    fontSize: DEFAULT_FONT_SIZE,
+    contentWidth: DEFAULT_CONTENT_WIDTH,
     template: '', // 서버 버전의 docx 템플릿 파일명, 빈 값이면 기본 템플릿
     version: SETTINGS_VERSION,
   };
   try {
     const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
-    const merged = { ...base, ...stored };
-    // v2: 자동 저장 기본값이 ON 으로 바뀌었다. 이전 설정을 가진 사용자도 한 번만 ON 으로 전환한다(이후 끄면 존중).
-    if (stored.version !== SETTINGS_VERSION) {
-      merged.autosave = true;
+    const outdated = stored.version !== SETTINGS_VERSION;
+    if (outdated) {
+      // 옛 기본값 그대로인 항목만 버리고(직접 바꾼 값은 유지) 새 기본값을 받는다
+      if (stored.fontSize === LEGACY_DEFAULTS.fontSize) delete stored.fontSize;
+      if (stored.contentWidth === LEGACY_DEFAULTS.contentWidth) delete stored.contentWidth;
+    }
+    const merged = { ...base, ...stored, version: SETTINGS_VERSION };
+    if (outdated) {
+      // v2: 자동 저장 기본값이 ON 으로 바뀌었다. 이전 설정을 가진 사용자도 한 번만 ON 으로 전환한다(이후 끄면 존중).
+      if ((stored.version ?? 0) < 2) merged.autosave = true;
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
     }
     return merged;
@@ -49,7 +61,7 @@ export const WIDTH_RANGE = { min: 480, max: 1600 };
 
 // 글자 크기와 본문 폭을 CSS 변수로 반영한다
 export function applyLayout() {
-  const f = Math.min(FONT_RANGE.max, Math.max(FONT_RANGE.min, Number(settings.fontSize) || 16));
+  const f = Math.min(FONT_RANGE.max, Math.max(FONT_RANGE.min, Number(settings.fontSize) || DEFAULT_FONT_SIZE));
   const w = Number(settings.contentWidth) || 0;
   const root = document.documentElement.style;
   root.setProperty('--editor-font-size', `${f}px`);

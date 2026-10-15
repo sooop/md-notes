@@ -68,7 +68,7 @@ export const tablePaste = (env: TableToolsEnv) =>
             const { $from } = view.state.selection;
             for (let d = $from.depth; d >= 0; d--) if (BLOCK_NO_PASTE.has($from.node(d).type.name)) return false;
             event.preventDefault(); // DOM 이벤트로 받으면 PM 이 막아주지 않으므로 브라우저 기본 붙여넣기를 직접 막는다
-            if (t.kind === 'tsv') { insertTable(view, t.rows); return true; }
+            if (t.kind !== 'csv') { insertTable(view, t.rows); return true; }
             const msg = `쉼표로 구분된 ${t.rows.length}행 × ${t.rows[0].length}열 데이터입니다. 표로 붙여넣을까요?`;
             void env.askChoose(msg, ['텍스트로 붙여넣기', '표로 붙여넣기']).then((b) => {
               if (b === 1) insertTable(view, t.rows);

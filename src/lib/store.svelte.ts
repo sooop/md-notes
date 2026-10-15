@@ -79,7 +79,11 @@ export const doc = $state({
 });
 
 // 마지막 에디터 내용을 외부에서 읽기 위한 훅 (Editor 가 등록)
-export const editorBridge: { getMarkdown: () => string } = { getMarkdown: () => doc.content };
+// preparePrint: 인쇄용 정적 사본(코드 하이라이트 포함)을 만들고 정리 함수를 돌려준다
+export const editorBridge: { getMarkdown: () => string; preparePrint: (() => Promise<() => void>) | null } = {
+  getMarkdown: () => doc.content,
+  preparePrint: null,
+};
 
 // ---- 진행 상태 (pandoc 엔진 준비/변환 등 시간이 걸리는 작업) ----
 export const status = $state({ text: '' });

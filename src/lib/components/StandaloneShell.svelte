@@ -7,6 +7,7 @@
   import DropOverlay from './DropOverlay.svelte';
   import PasteModal from './PasteModal.svelte';
   import MoreMenu from './MoreMenu.svelte';
+  import { printDoc } from '../printCode';
   import HistoryPanel from './HistoryPanel.svelte';
   import ModeToggle from './ModeToggle.svelte';
   import CommentsPanel from './CommentsPanel.svelte';
@@ -52,6 +53,7 @@
     const k = e.key.toLowerCase();
     if (k === 's') { e.preventDefault(); void save(); }
     else if (k === 'o') { e.preventDefault(); openPicker(); }
+    else if (k === 'p' && !e.shiftKey && !e.altKey && doc.path) { e.preventDefault(); void printDoc(); }
   }
   // 입력 후 디바운스 대기 중인 내용을 탭을 숨기거나 닫을 때 바로 기록한다
   function onHide() { void flush(); }
@@ -133,6 +135,7 @@
           onHistory={() => (historyOpen = true)}
           onMd={exportMd}
           onDocx={exportDocxCurrent}
+          onPrint={printDoc}
           options={templateOptions}
           selected={tpl.name ? 'custom' : ''}
           onSelect={(id) => { if (id === '') void clearTemplate(); }}

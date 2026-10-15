@@ -4,6 +4,7 @@
   interface Props {
     onHistory: () => void;
     onDocx: () => void;
+    onPrint?: () => void;
     onMd?: () => void;
     /** 서버 모드: 문서의 이미지를 Base64 ↔ 파일로 바꾸는 항목 */
     onImages?: (to: 'base64' | 'file') => void;
@@ -16,7 +17,7 @@
     hint?: string;
     actions?: { label: string; run: () => void }[];
   }
-  let { onHistory, onDocx, onMd, onImages, options, selected, onSelect, onOpen, hint = '', actions = [] }: Props = $props();
+  let { onHistory, onDocx, onPrint, onMd, onImages, options, selected, onSelect, onOpen, hint = '', actions = [] }: Props = $props();
 
   let open = $state(false);
 
@@ -49,6 +50,7 @@
       <span class="label">내보내기</span>
       {#if onMd}<button role="menuitem" onclick={() => run(onMd)}>.md 파일로 내려받기</button>{/if}
       <button role="menuitem" onclick={() => run(onDocx)}>.docx 로 내보내기</button>
+      {#if onPrint}<button role="menuitem" onclick={() => run(onPrint)}>인쇄 …</button>{/if}
       <hr />
       <span class="label">DOCX 서식 템플릿</span>
       {#each options as o (o.id)}

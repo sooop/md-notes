@@ -164,8 +164,7 @@ export const codeLanguages: LanguageDescription[] = languageList.map((l) =>
 
 // 색은 CSS 변수(--hl-*)로 정의해 라이트/다크 테마와 함께 바뀐다 (app.css 참고)
 const v = (name: string) => `var(--hl-${name})`;
-export const codeHighlight = syntaxHighlighting(
-  HighlightStyle.define([
+export const codeHighlightStyle = HighlightStyle.define([
     { tag: [t.keyword, t.modifier, t.controlKeyword, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword], color: v('keyword') },
     { tag: [t.string, t.special(t.string), t.regexp, t.character, t.attributeValue], color: v('string') },
     { tag: [t.number, t.bool, t.null, t.atom, t.unit], color: v('number') },
@@ -183,5 +182,5 @@ export const codeHighlight = syntaxHighlighting(
     { tag: [t.deleted], color: v('deleted') },
     { tag: [t.changed], color: v('number') },
     { tag: t.escape, color: v('number') },
-  ]),
-);
+]);
+export const codeHighlight = syntaxHighlighting(codeHighlightStyle);

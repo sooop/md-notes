@@ -8,6 +8,7 @@
   import DropOverlay from './DropOverlay.svelte';
   import PasteModal from './PasteModal.svelte';
   import MoreMenu from './MoreMenu.svelte';
+  import { printDoc } from '../printCode';
   import HistoryPanel from './HistoryPanel.svelte';
   import ModeToggle from './ModeToggle.svelte';
   import CommentsPanel from './CommentsPanel.svelte';
@@ -52,6 +53,10 @@
 
   function onKey(e: KeyboardEvent) {
     if (searchShortcut(e, !!doc.path) === 'global') sidebarOpen = true;
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p' && doc.path) {
+      e.preventDefault();
+      void printDoc();
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
       void save();
@@ -133,6 +138,7 @@
           onImages={(to) => void convertImages(to)}
           onMd={exportMdCurrent}
           onDocx={exportDocxCurrent}
+          onPrint={printDoc}
           options={templateOptions}
           selected={settings.template}
           onSelect={selectTemplate}

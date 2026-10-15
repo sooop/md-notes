@@ -20,6 +20,7 @@
   import { finder } from '../search/state.svelte';
   import { codeLanguages, codeHighlight } from '../codeLanguages';
   import { onlyDoubleTilde } from '../gfmTilde';
+  import { buildPrintClone } from '../printCode';
   import { splitFrontmatter, joinFrontmatter, frontInner, frontOuter } from '../frontmatter';
 
   interface Props {
@@ -88,6 +89,8 @@
           unbindTable = attachTableTools(c.editor.action((ctx) => ctx.get(editorViewCtx)), tableEnv); // 표 → TSV/CSV 복사·저장
           if (!preview) {
             editorBridge.getMarkdown = () => emit(c.getMarkdown());
+            const pv = c.editor.action((ctx) => ctx.get(editorViewCtx));
+            editorBridge.preparePrint = () => buildPrintClone(pv, host);
             // 문서 내 검색·코멘트: 열린 문서의 에디터만 연결한다
             const view = c.editor.action((ctx) => ctx.get(editorViewCtx));
             ctl = attachFinder(view, (st) => Object.assign(finder, st));

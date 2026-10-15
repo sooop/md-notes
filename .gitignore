@@ -1,7 +1,7 @@
 node_modules/
 dist/
 dist-html/
-sample/
+# sample/
 .env
 .env.*
 !.env.example

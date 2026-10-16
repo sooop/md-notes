@@ -1,3 +1,4 @@
+import { splitFrontmatter } from './frontmatter';
 export const dirname = (p: string) => {
   const i = p.lastIndexOf('/');
   return i < 0 ? '' : p.slice(0, i);
@@ -111,9 +112,10 @@ export function sanitizeName(s: string): string {
     .replace(/^\.+/, '');
 }
 
-// 본문 첫 줄(제목 문법 제거)에서 문서 이름 후보를 뽑는다
+// 본문 첫 줄(제목 문법 제거)에서 문서 이름 후보를 뽑는다. frontmatter 와 빈 줄·구분선(---, ***, ___)은 건너뛴다.
 export function guessTitle(text: string): string {
-  const line = text.split(/\r?\n/).find((l) => l.trim()) ?? '';
+  const { body } = splitFrontmatter(text);
+  const line = body.split(/\r?\n/).find((l) => l.trim() && !/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)) ?? '';
   const plain = line
     .replace(/^\s*(#{1,6}\s+|[-*+>]\s+|\d+\.\s+)/, '')
     .replace(/[*_`~[\]()!]/g, '');

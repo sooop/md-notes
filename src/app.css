@@ -9,6 +9,7 @@
 @import '@milkdown/crepe/theme/common/placeholder.css';
 @import '@milkdown/crepe/theme/common/toolbar.css';
 @import '@milkdown/crepe/theme/common/table.css';
+@import '@milkdown/crepe/theme/common/latex.css';
 
 /* Claude 컬러 테마. 폰트는 시스템에 설치된 Pretendard Variable 을 가정한다(호스팅/번들 없음). */
 :root {
@@ -424,8 +425,11 @@ button svg { flex: none; }
 :root .milkdown .milkdown-table-block { margin: 16px 0; }
 /* 표: 셀 여백·글자를 줄여 정보 밀도를 높인다 */
 :root .milkdown .milkdown-table-block { font-size: 0.9em; }
-/* 열 너비: ProseMirror 기본(table-layout: fixed)은 1/N 균등 분배라서, 내용 길이에 따라 나누는 auto 로 바꾼다 */
-:root .milkdown .milkdown-table-block table { table-layout: auto; }
+/* 열 너비: ProseMirror 기본(table-layout: fixed)은 1/N 균등 분배라서, 내용 길이에 따라 나누는 auto 로 바꾼다.
+   width 100% 로 본문 폭을 다 쓰고(남는 폭은 긴 내용의 열이 가져간다), 긴 셀은 어절 단위로 줄바꿈하되 한 어절이 너무 길면 중간에서 꺾는다. */
+:root .milkdown .milkdown-table-block table { table-layout: auto; width: 100%; }
+:root .milkdown .milkdown-table-block th,
+:root .milkdown .milkdown-table-block td { overflow-wrap: break-word; word-break: keep-all; }
 :root .milkdown .milkdown-table-block th,
 :root .milkdown .milkdown-table-block td { padding: 4px 10px; line-height: 1.45; }
 /* 표 선: crepe 기본은 outline 을 20% 로 섞어 너무 연하다 */

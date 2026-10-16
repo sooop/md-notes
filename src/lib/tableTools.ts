@@ -142,17 +142,17 @@ function toggleHeader(view: EditorView, table: PMNode, pos: number, env: TableTo
   view.dispatch(view.state.tr.replaceWith(pos, pos + table.nodeSize, table.type.create(table.attrs, Fragment.from(next))));
 }
 
-type Fmt = 'tsv' | 'csv';
+export type Fmt = 'tsv' | 'csv';
 const serialize = (rows: string[][], fmt: Fmt) => (fmt === 'tsv' ? toTsv(rows) : toCsv(rows));
 
-function copyTable(rows: string[][], fmt: Fmt, env: TableToolsEnv) {
+export function copyTable(rows: string[][], fmt: Fmt, env: Pick<TableToolsEnv, 'toast'>) {
   writeClipboard(serialize(rows, fmt)).then(
     () => env.toast(`표를 ${fmt.toUpperCase()} 로 복사했습니다`),
     (e) => env.toast(e instanceof Error ? e.message : String(e), 'error'),
   );
 }
 
-function saveTable(rows: string[][], fmt: Fmt, index: number, env: TableToolsEnv) {
+export function saveTable(rows: string[][], fmt: Fmt, index: number, env: Pick<TableToolsEnv, 'toast' | 'docName'>) {
   // CSV 는 UTF-8 BOM 을 붙여야 엑셀이 한글을 깨뜨리지 않는다
   const body = (fmt === 'csv' ? '﻿' : '') + serialize(rows, fmt);
   const base = env.docName() || '표';

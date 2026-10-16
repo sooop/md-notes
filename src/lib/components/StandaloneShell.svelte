@@ -10,6 +10,7 @@
   import { printDoc } from '../printCode';
   import HistoryPanel from './HistoryPanel.svelte';
   import ModeToggle from './ModeToggle.svelte';
+  import DocTitle from './DocTitle.svelte';
   import CommentsPanel from './CommentsPanel.svelte';
   import CommentLayer from './CommentLayer.svelte';
   import { openCount } from '../comments/store.svelte';
@@ -28,7 +29,7 @@
   import { doc } from '../store.svelte';
   import {
     lib, init, save, flush, exportMd, copyMd, exportAll, openPicker, openDoc, createDoc, renameDoc, removeDoc, onEditorChange,
-    upload, resolveUrl, importFiles, createFromText, exportDocxCurrent, tpl, pickTemplate, clearTemplate, restoreVersion, searchLibrary,
+    upload, resolveUrl, importFiles, createFromText, exportDocxCurrent, tpl, pickTemplate, clearTemplate, restoreVersion, searchLibrary, renameCurrent,
   } from '../standalone-mode.svelte';
   import { stripExt } from '../utils';
   import { ui, searchShortcut } from '../search/state.svelte';
@@ -126,7 +127,7 @@
   <main class="main">
     <header class="topbar">
       <button class="icon-btn" aria-label="사이드바 토글" onclick={() => (sidebarOpen = !sidebarOpen)}><PanelLeft size={18} /></button>
-      <h1 class="doc-title">{doc.path ? stripExt(doc.name) : '문서를 선택하세요'}</h1>
+      <DocTitle title={doc.path ? stripExt(doc.name) : '문서를 선택하세요'} editable={!!doc.path} onRename={renameCurrent} />
       <span class="spacer"></span>
       {#if doc.path}
         <ModeToggle />

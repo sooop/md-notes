@@ -90,7 +90,6 @@ async function loadDoc(path: string) {
   doc.name = basename(path);
   doc.content = f.content;
   doc.dirty = false;
-  doc.edit = false; // 기존 문서는 항상 읽기 모드로 연다
   doc.key++;
   void snapshot(path, f.content).catch(() => { /* 이력은 부가 기능이라 실패해도 무시 */ });
   try { localStorage.setItem(LAST_KEY, path); } catch { /* 무시 */ }
@@ -171,7 +170,10 @@ export async function searchFiles(
 const BAD_NAME = /[\\/:*?"<>|]/;
 
 async function askName(title: string, value: string): Promise<string | null> {
-  const name = await askPrompt(title, value);
+  return validName(await askPrompt(title, value));
+}
+
+function validName(name: string | null): string | null {
   if (!name) return null;
   if (BAD_NAME.test(name) || name === '.' || name === '..') {
     toast('이름에 \\ / : * ? " < > | 문자는 쓸 수 없습니다', 'error');
@@ -211,7 +213,18 @@ const affects = (target: string) => doc.path === target || doc.path.startsWith(t
 export async function renameNode(node: TreeNode) {
   const isFile = node.type === 'file';
   const name = await askName('새 이름', isFile ? stripExt(node.name) : node.name);
-  if (!name) return;
+  if (name) await renameNodeTo(node, name);
+}
+
+// 상단 제목 더블 클릭: 열려 있는 문서의 이름을 바꾼다
+export async function renameCurrent(input: string) {
+  if (!doc.path) return;
+  const name = validName(input.trim());
+  if (name) await renameNodeTo({ name: basename(doc.path), path: doc.path, type: 'file' }, name);
+}
+
+async function renameNodeTo(node: TreeNode, name: string) {
+  const isFile = node.type === 'file';
   const next = isFile ? (/\.md$/i.test(name) ? name : `${name}.md`) : name;
   if (next === node.name) return;
   if (affects(node.path) && !(await guardDirty())) return;

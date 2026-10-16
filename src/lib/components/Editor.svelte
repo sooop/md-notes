@@ -6,6 +6,7 @@
   import { cursor } from '@milkdown/crepe/feature/cursor';
   import { imageBlock } from '@milkdown/crepe/feature/image-block';
   import { linkTooltip } from '@milkdown/crepe/feature/link-tooltip';
+  import { latex } from '@milkdown/crepe/feature/latex';
   import { listItem } from '@milkdown/crepe/feature/list-item';
   import { placeholder } from '@milkdown/crepe/feature/placeholder';
   import { table } from '@milkdown/crepe/feature/table';
@@ -68,6 +69,7 @@
         .addFeature(toolbar)
         .addFeature(codeMirror, { languages: codeLanguages, theme: codeHighlight })
         .addFeature(table)
+        .addFeature(latex) // $수식$ · $$블록 수식$$ (KaTeX)
         .addFeature(placeholder, { text: '내용을 입력하세요. / 를 누르면 블록 메뉴가 열립니다.' })
         .addFeature(imageBlock, {
           onUpload: upload,

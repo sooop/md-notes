@@ -59,10 +59,10 @@
       ></textarea>
       <label class="name-field">
         <span>문서 이름</span>
-        <input bind:value={name} oninput={() => (nameTouched = true)} placeholder="새 문서" spellcheck="false" />
+        <input bind:value={name} oninput={() => (nameTouched = true)} onkeydown={(e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); void create(); } }} placeholder="새 문서" spellcheck="false" />
       </label>
       <div class="actions">
-        <span class="hint">Ctrl+Enter 로 만들기</span>
+        <span class="hint">Ctrl+Enter 로 만들기 (문서 이름에서는 Enter)</span>
         <button onclick={onClose}>취소</button>
         <button class="primary" disabled={!text.trim()} onclick={create}>만들기</button>
       </div>

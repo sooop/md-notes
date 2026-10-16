@@ -11,6 +11,7 @@
   import { printDoc } from '../printCode';
   import HistoryPanel from './HistoryPanel.svelte';
   import ModeToggle from './ModeToggle.svelte';
+  import DocTitle from './DocTitle.svelte';
   import CommentsPanel from './CommentsPanel.svelte';
   import CommentLayer from './CommentLayer.svelte';
   import { openCount } from '../comments/store.svelte';
@@ -27,7 +28,7 @@
   import {
     tree, nav, templates, init, openDoc, save, onEditorChange, upload, resolveUrl, createDoc, createFolder,
     convertImages, createFromText, handleDrop, exportDocxCurrent, exportMdCurrent, copyMdCurrent, refreshTemplates, selectTemplate,
-    restoreVersion, searchFiles,
+    restoreVersion, searchFiles, renameCurrent,
   } from '../server-mode.svelte';
   import { stripExt } from '../utils';
   import { ui, searchShortcut } from '../search/state.svelte';
@@ -125,10 +126,7 @@
   <main class="main">
     <header class="topbar">
       <button class="icon-btn" aria-label="사이드바 토글" onclick={() => (sidebarOpen = !sidebarOpen)}><PanelLeft size={18} /></button>
-      <h1 class="doc-title">
-        {doc.path ? stripExt(doc.name) : '문서를 선택하세요'}
-        {#if doc.dirty}<span class="dot" title="저장 안 됨">●</span>{/if}
-      </h1>
+      <DocTitle title={doc.path ? stripExt(doc.name) : '문서를 선택하세요'} editable={!!doc.path} dirty={doc.dirty} onRename={renameCurrent} />
       <span class="spacer"></span>
       {#if doc.path}
         <ModeToggle />

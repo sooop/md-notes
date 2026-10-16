@@ -129,7 +129,7 @@ export async function openDoc(id: string) {
   await flush();
   const rec = all.get(id);
   if (!rec) return;
-  Object.assign(doc, { path: id, name: rec.name, content: rec.content, dirty: false, edit: false }); // 기존 문서는 항상 읽기 모드로 연다
+  Object.assign(doc, { path: id, name: rec.name, content: rec.content, dirty: false }); // 모드(읽기/편집)는 문서를 옮겨도 유지한다
   doc.key++;
   void snapshot(id, rec.content).catch(() => { /* 무시 */ });
   try { localStorage.setItem(LAST_KEY, id); } catch { /* 무시 */ }
@@ -150,7 +150,7 @@ async function createRec(stem: string, content: string, open = true, edit = fals
   await putDoc(rec);
   all.set(rec.id, rec);
   refreshList();
-  if (open) { await openDoc(rec.id); if (doc.path === rec.id) doc.edit = edit; }
+  if (open) { await openDoc(rec.id); if (doc.path === rec.id && edit) doc.edit = true; }
   return rec;
 }
 
@@ -167,6 +167,16 @@ export async function renameDoc(meta: DocMeta) {
   if (!rec) return;
   const input = await askPrompt('새 이름', stripExt(rec.name));
   if (input === null) return;
+  await renameDocTo(rec.id, input);
+}
+
+export async function renameCurrent(input: string) {
+  if (doc.path) await renameDocTo(doc.path, input);
+}
+
+async function renameDocTo(id: string, input: string) {
+  const rec = all.get(id);
+  if (!rec) return;
   const name = `${toStem(input)}.md`;
   if (name === rec.name) return;
   if ([...all.values()].some((r) => r.id !== rec.id && r.name.toLowerCase() === name.toLowerCase())) {

@@ -428,6 +428,11 @@ button svg { flex: none; }
 :root .milkdown .milkdown-table-block table { table-layout: auto; }
 :root .milkdown .milkdown-table-block th,
 :root .milkdown .milkdown-table-block td { padding: 4px 10px; line-height: 1.45; }
+/* 표 선: crepe 기본은 outline 을 20% 로 섞어 너무 연하다 */
+:root { --table-line: #a09e92; }
+:root[data-theme='dark'] { --table-line: #7a7972; }
+:root .milkdown .milkdown-table-block th,
+:root .milkdown .milkdown-table-block td { border-color: var(--table-line); }
 :root .milkdown .milkdown-table-block th p,
 :root .milkdown .milkdown-table-block td p { padding: 0; margin: 0; }
 :root .milkdown .milkdown-code-block { margin: 16px 0; padding-top: 12px; }
@@ -637,6 +642,7 @@ input.invalid { color: #c0392b; }
   :root .milkdown .milkdown-table-block table { width: 100%; table-layout: auto; }
   :root .milkdown .milkdown-table-block td, :root .milkdown .milkdown-table-block th { overflow-wrap: anywhere; }
   :root .milkdown .milkdown-table-block thead { display: table-header-group; }
+  :root .milkdown .milkdown-table-block th, :root .milkdown .milkdown-table-block td { border: 1px solid #555 !important; }
 
   .print-code, .milkdown-table-block th, .milkdown-table-block thead td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   img { max-width: 100% !important; }

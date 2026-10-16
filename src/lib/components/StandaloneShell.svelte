@@ -27,7 +27,7 @@
   import PanelLeft from '@lucide/svelte/icons/panel-left';
   import { doc } from '../store.svelte';
   import {
-    lib, init, save, flush, exportMd, exportAll, openPicker, openDoc, createDoc, renameDoc, removeDoc, onEditorChange,
+    lib, init, save, flush, exportMd, copyMd, exportAll, openPicker, openDoc, createDoc, renameDoc, removeDoc, onEditorChange,
     upload, resolveUrl, importFiles, createFromText, exportDocxCurrent, tpl, pickTemplate, clearTemplate, restoreVersion, searchLibrary,
   } from '../standalone-mode.svelte';
   import { stripExt } from '../utils';
@@ -134,6 +134,7 @@
         <MoreMenu
           onHistory={() => (historyOpen = true)}
           onMd={exportMd}
+          onCopyMd={copyMd}
           onDocx={exportDocxCurrent}
           onPrint={printDoc}
           options={templateOptions}

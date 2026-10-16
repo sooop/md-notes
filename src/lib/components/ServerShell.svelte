@@ -26,7 +26,7 @@
   import { doc, settings } from '../store.svelte';
   import {
     tree, nav, templates, init, openDoc, save, onEditorChange, upload, resolveUrl, createDoc, createFolder,
-    convertImages, createFromText, handleDrop, exportDocxCurrent, exportMdCurrent, refreshTemplates, selectTemplate,
+    convertImages, createFromText, handleDrop, exportDocxCurrent, exportMdCurrent, copyMdCurrent, refreshTemplates, selectTemplate,
     restoreVersion, searchFiles,
   } from '../server-mode.svelte';
   import { stripExt } from '../utils';
@@ -137,6 +137,7 @@
           onHistory={() => (historyOpen = true)}
           onImages={(to) => void convertImages(to)}
           onMd={exportMdCurrent}
+          onCopyMd={copyMdCurrent}
           onDocx={exportDocxCurrent}
           onPrint={printDoc}
           options={templateOptions}

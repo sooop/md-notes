@@ -86,6 +86,22 @@ export function downloadBlob(name: string, blob: Blob) {
 export const downloadText = (name: string, text: string) =>
   downloadBlob(name, new Blob([text], { type: 'text/markdown;charset=utf-8' }));
 
+// 클립보드에 텍스트 복사 (권한/보안 컨텍스트 문제 시 execCommand 로 대체)
+export async function writeClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    if (!ok) throw new Error('클립보드에 복사하지 못했습니다');
+  }
+}
+
 // 파일명으로 쓸 수 없는 문자를 걷어낸다
 export function sanitizeName(s: string): string {
   return s

@@ -6,6 +6,7 @@
     onDocx: () => void;
     onPrint?: () => void;
     onMd?: () => void;
+    onCopyMd?: () => void;
     /** 서버 모드: 문서의 이미지를 Base64 ↔ 파일로 바꾸는 항목 */
     onImages?: (to: 'base64' | 'file') => void;
     /** docx 템플릿 선택지 (id '' 는 기본 템플릿) */
@@ -17,7 +18,7 @@
     hint?: string;
     actions?: { label: string; run: () => void }[];
   }
-  let { onHistory, onDocx, onPrint, onMd, onImages, options, selected, onSelect, onOpen, hint = '', actions = [] }: Props = $props();
+  let { onHistory, onDocx, onPrint, onMd, onCopyMd, onImages, options, selected, onSelect, onOpen, hint = '', actions = [] }: Props = $props();
 
   let open = $state(false);
 
@@ -49,6 +50,7 @@
       <hr />
       <span class="label">내보내기</span>
       {#if onMd}<button role="menuitem" onclick={() => run(onMd)}>.md 파일로 내려받기</button>{/if}
+      {#if onCopyMd}<button role="menuitem" onclick={() => run(onCopyMd)}>마크다운 텍스트 복사</button>{/if}
       <button role="menuitem" onclick={() => run(onDocx)}>.docx 로 내보내기</button>
       {#if onPrint}<button role="menuitem" onclick={() => run(onPrint)}>인쇄 …</button>{/if}
       <hr />

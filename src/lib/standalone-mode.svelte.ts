@@ -2,7 +2,7 @@
 // 디스크 파일과는 연동하지 않는다(열기/드롭/붙여넣기는 가져오기, .md/.docx 는 내보내기).
 import { doc, toast, askPrompt, askConfirm, errMsg, withStatus } from './store.svelte';
 import { buildArchive, parseArchive } from './archive';
-import { downloadBlob, downloadText, fileToDataUrl, replaceImages, sanitizeName, stripExt } from './utils';
+import { downloadBlob, downloadText, writeClipboard, fileToDataUrl, replaceImages, sanitizeName, stripExt } from './utils';
 import { exportDocx, isImportable, readImport } from './docx-flow';
 import { buildMatcher, searchText } from '../../server/searchCore.js';
 import type { SearchResponse } from './search/types';
@@ -406,6 +406,16 @@ export async function exportMd() {
     downloadText(/\.(md|markdown|txt)$/i.test(doc.name) ? doc.name : `${doc.name}.md`, text);
   } catch (e) {
     toast(`.md 내보내기 실패: ${errMsg(e)}`, 'error');
+  }
+}
+
+export async function copyMd() {
+  if (!doc.path) return;
+  try {
+    await writeClipboard(doc.content);
+    toast('마크다운 텍스트를 클립보드에 복사했습니다');
+  } catch (e) {
+    toast(`복사 실패: ${errMsg(e)}`, 'error');
   }
 }
 

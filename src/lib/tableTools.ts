@@ -5,7 +5,7 @@ import { Plugin } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { $prose } from '@milkdown/kit/utils';
 import { detectTable, toCsv, toTsv } from './tableCsv';
-import { downloadBlob } from './utils';
+import { downloadBlob, writeClipboard } from './utils';
 
 export interface TableToolsEnv {
   toast: (text: string, kind?: 'info' | 'error') => void;
@@ -140,21 +140,6 @@ function toggleHeader(view: EditorView, table: PMNode, pos: number, env: TableTo
     next = [retype(rows[1], n.table_header_row, n.table_header), ...rows.slice(2)];
   }
   view.dispatch(view.state.tr.replaceWith(pos, pos + table.nodeSize, table.type.create(table.attrs, Fragment.from(next))));
-}
-
-async function writeClipboard(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;opacity:0';
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    ta.remove();
-    if (!ok) throw new Error('클립보드에 복사하지 못했습니다');
-  }
 }
 
 type Fmt = 'tsv' | 'csv';

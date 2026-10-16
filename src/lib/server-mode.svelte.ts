@@ -4,7 +4,7 @@ import {
 } from './store.svelte';
 import {
   basename, dirname, joinPath, safeDecode, stripExt, fileToDataUrl, imageExt,
-  isExternalSrc, replaceImages, downloadText,
+  isExternalSrc, replaceImages, downloadText, writeClipboard,
 } from './utils';
 import { exportDocx, isImportable, readImport } from './docx-flow';
 import { snapshot, moveHistory, removeHistory } from './history';
@@ -399,6 +399,16 @@ export async function exportMdCurrent() {
     toast(count > 0 ? `.md 파일을 내려받았습니다 (이미지 ${count}개는 Base64로 포함)` : '.md 파일을 내려받았습니다');
   } catch (e) {
     toast(`.md 내보내기 실패: ${errMsg(e)}`, 'error');
+  }
+}
+
+export async function copyMdCurrent() {
+  if (!doc.path) return;
+  try {
+    await writeClipboard(doc.content);
+    toast('마크다운 텍스트를 클립보드에 복사했습니다');
+  } catch (e) {
+    toast(`복사 실패: ${errMsg(e)}`, 'error');
   }
 }
 
